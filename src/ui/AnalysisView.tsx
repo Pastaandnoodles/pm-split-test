@@ -102,7 +102,7 @@ function OutcomeTiles({ r }: { r: AnalysisResult }) {
       {GROUPS.map((g) => (
         <div key={`s${g}`} className="card stat">
           <div className="label">
-            <GroupTag group={g} /> scrap
+            <GroupTag group={g} /> failed-plate scrap
           </div>
           <div className="value">{fmtNum(r.scrap[g].totalScrapG)} g</div>
           <div className="value" style={{ fontSize: 20 }}>≈ {fmtNum(r.scrap[g].lostParts)} wigglitz lost</div>
@@ -222,12 +222,26 @@ function YieldTable({ r }: { r: AnalysisResult }) {
           </tbody>
         </table>
       </div>
+      <PtsNote r={r} />
       {r.yieldTest && (
         <span className="secondary small">
           Average difference {(r.yieldTest.meanDiff * 100).toFixed(1)} pts (likely range {(r.yieldTest.ci.low * 100).toFixed(1)} to {(r.yieldTest.ci.high * 100).toFixed(1)}), paired by cycle.
         </span>
       )}
     </div>
+  );
+}
+
+/** Explains "pts" with a worked example from the first cycle that has both overall yields. */
+function PtsNote({ r }: { r: AnalysisResult }) {
+  const ex = r.cycleYields.find((c) => c.control.overallYield !== null && c.maintenance.overallYield !== null);
+  const p = (x: number) => (x * 100).toFixed(1);
+  return (
+    <span className="secondary small">
+      pts = percentage points: the Maintenance % minus the Control %.
+      {ex &&
+        ` For example, C${ex.cycleNumber}: ${p(ex.maintenance.overallYield!)}% − ${p(ex.control.overallYield!)}% = ${ex.maintenance.overallYield! >= ex.control.overallYield! ? '+' : ''}${p(ex.maintenance.overallYield! - ex.control.overallYield!)} pts.`}
+    </span>
   );
 }
 
