@@ -25,11 +25,24 @@ export const ONE_TIME_STEP_LABELS: Record<OneTimeStepKey, string> = {
   nozzle: 'Nozzle tip cleaned',
 };
 
+/** Marks a one-time step done on one printer. Time is logged for the whole group in PmTime. */
 export interface OneTimeStep extends BaseRecord {
   printerId: string;
   step: OneTimeStepKey;
-  minutes: number;
   doneAt: string;
+}
+
+/**
+ * Maintenance labor timed for the whole Maintenance group, not per printer.
+ * one_time: minutes spent on one step across all printers (entries for a step are summed).
+ * per_print: minutes spent on per-print PM for the whole group in one cycle (entries are summed).
+ */
+export interface PmTime extends BaseRecord {
+  scope: 'one_time' | 'per_print';
+  step?: OneTimeStepKey;
+  cycleId?: string;
+  minutes: number;
+  note?: string;
 }
 
 export interface FileSpec extends BaseRecord {
@@ -102,7 +115,6 @@ export interface PlateRun extends BaseRecord {
   cancelReason?: CancelReason;
   checks: PrePrintChecks;
   correctPlatePool: boolean;
-  pmMinutes: number; // per-print PM labor (maintenance only)
   // Failure details (fail_finished / fail_stopped)
   failureType?: FailureType;
   photoId?: string;
@@ -159,7 +171,10 @@ export interface Downtime extends BaseRecord {
   reason?: string;
 }
 
-export type BinKind = 'good' | 'reject';
+/** good = sold; seconds = donated, not sold; scrap = unredeemable, recycled. */
+export type BinKind = 'good' | 'seconds' | 'scrap';
+export const BIN_KINDS: BinKind[] = ['good', 'seconds', 'scrap'];
+export const BIN_KIND_LABELS: Record<BinKind, string> = { good: 'Good', seconds: 'Seconds', scrap: 'Scrap' };
 export interface BinWeight extends BaseRecord {
   cycleId: string;
   group: Group;
@@ -216,7 +231,6 @@ export interface Settings {
   testLocked: boolean;
   groupOverrides: Record<string, Group>;
   goalPerGroup: number;
-  perPrintPmMinutesDefault: number;
   calibrationMachineMinutes: number;
   missingTolerancePct: number;
   passFailRuleText: string;
@@ -239,7 +253,6 @@ export const DEFAULT_SETTINGS: Settings = {
   testLocked: false,
   groupOverrides: {},
   goalPerGroup: 532,
-  perPrintPmMinutesDefault: 3,
   calibrationMachineMinutes: 0,
   missingTolerancePct: 2,
   passFailRuleText: DEFAULT_PASS_FAIL_RULE,
@@ -258,5 +271,6 @@ export interface Dataset {
   bins: BinWeight[];
   deviations: Deviation[];
   oneTime: OneTimeStep[];
+  pmTime: PmTime[];
   settings: Settings;
 }

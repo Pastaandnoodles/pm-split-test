@@ -44,6 +44,8 @@ export async function restoreBackup(file: File): Promise<void> {
   const all = [...RECORD_TABLES.map((t) => db[t]), db.settings, db.audit, db.photos];
   await db.transaction('rw', all, async () => {
     for (const t of all) await t.clear();
+    // Backups from before the seconds/scrap split have a single 'reject' bin; it becomes scrap.
+    for (const b of payload.tables.bins ?? []) if (b.kind === 'reject') b.kind = 'scrap';
     for (const t of RECORD_TABLES) await (db[t] as unknown as Table<unknown, string>).bulkAdd(payload.tables[t] ?? []);
     await db.settings.bulkAdd(payload.tables.settings ?? []);
     await db.audit.bulkAdd(payload.tables.audit ?? []);

@@ -1,4 +1,4 @@
-import type { BinWeight, Cycle, FileSpec, Group, PlateRun, Printer } from './types';
+import type { BinKind, BinWeight, Cycle, FileSpec, Group, PlateRun, Printer } from './types';
 
 export interface GroupCycleYield {
   cycleId: string;
@@ -8,9 +8,11 @@ export interface GroupCycleYield {
   passedPlates: number;
   expectedParts: number;
   goodParts: number | null;
-  rejectedParts: number | null;
+  secondsParts: number | null; // donated, not sold
+  scrapParts: number | null; // unredeemable, recycled
+  rejectedParts: number | null; // seconds + scrap
   missingParts: number | null; // negative = extra parts
-  qcYield: number | null;
+  qcYield: number | null; // good / (good + seconds + scrap)
   overallYield: number | null;
   flags: string[];
 }
@@ -20,7 +22,7 @@ export function partsFromWeight(grossG: number, tareG: number, unitWeightG: numb
 }
 
 /** Latest non-voided bin weighing for the cycle, group and kind. */
-export function findBin(bins: BinWeight[], cycleId: string, group: Group, kind: 'good' | 'reject'): BinWeight | undefined {
+export function findBin(bins: BinWeight[], cycleId: string, group: Group, kind: BinKind): BinWeight | undefined {
   return bins
     .filter((b) => !b.voided && b.cycleId === cycleId && b.group === group && b.kind === kind)
     .sort((a, b) => a.updatedAt.localeCompare(b.updatedAt))
@@ -44,23 +46,22 @@ export function computeGroupCycleYield(
   const expectedParts = passedPlates * ppp;
   const flags: string[] = [];
 
-  const good = findBin(bins, cycle.id, group, 'good');
-  const reject = findBin(bins, cycle.id, group, 'reject');
   const tare = cycle.binTareG ?? 0;
   const unit = file?.unitWeightG ?? 0;
-
-  let goodParts: number | null = null;
-  let rejectedParts: number | null = null;
-  if (unit > 0 && good) goodParts = partsFromWeight(good.grossG, tare, unit);
-  if (unit > 0 && reject) rejectedParts = partsFromWeight(reject.grossG, tare, unit);
+  const count = (kind: BinKind): number | null => {
+    const bin = findBin(bins, cycle.id, group, kind);
+    return bin && unit > 0 ? partsFromWeight(bin.grossG, tare, unit) : null;
+  };
+  const goodParts = count('good');
+  const secondsParts = count('seconds');
+  const scrapParts = count('scrap');
+  const anyBin = goodParts !== null || secondsParts !== null || scrapParts !== null;
   if (!file) flags.push('No file set for this cycle');
-  if (cycle.binTareG === undefined && (good || reject)) flags.push('Bin tare not entered');
+  if (cycle.binTareG === undefined && anyBin) flags.push('Bin tare not entered');
 
+  const rejectedParts = secondsParts !== null && scrapParts !== null ? secondsParts + scrapParts : null;
   const missingParts = goodParts !== null && rejectedParts !== null ? expectedParts - goodParts - rejectedParts : null;
-  const qcYield =
-    goodParts !== null && rejectedParts !== null && goodParts + rejectedParts > 0
-      ? goodParts / (goodParts + rejectedParts)
-      : null;
+  const qcYield = goodParts !== null && rejectedParts !== null && goodParts + rejectedParts > 0 ? goodParts / (goodParts + rejectedParts) : null;
   const overallYield = goodParts !== null && platesStarted * ppp > 0 ? goodParts / (platesStarted * ppp) : null;
 
   if (missingParts !== null && expectedParts > 0 && Math.abs(missingParts) > (tolerancePct / 100) * expectedParts) {
@@ -71,7 +72,7 @@ export function computeGroupCycleYield(
     );
   }
   if (goodParts !== null && goodParts > expectedParts) flags.push('More good parts than expected');
-  if (goodParts !== null && goodParts < 0) flags.push('Negative good weight: check tare');
+  if ([goodParts, secondsParts, scrapParts].some((x) => x !== null && x < 0)) flags.push('Negative bin weight: check tare');
 
   return {
     cycleId: cycle.id,
@@ -81,6 +82,8 @@ export function computeGroupCycleYield(
     passedPlates,
     expectedParts,
     goodParts,
+    secondsParts,
+    scrapParts,
     rejectedParts,
     missingParts,
     qcYield,

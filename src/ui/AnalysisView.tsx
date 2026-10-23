@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { analyze, GROUPS, type AnalysisOptions, type AnalysisResult, type PrinterStats } from '../domain/analysis';
 import { wilson } from '../domain/stats';
-import { FAILURE_TYPES, FAILURE_TYPE_LABELS, type Dataset, type Group } from '../domain/types';
+import { FAILURE_TYPES, FAILURE_TYPE_LABELS, ONE_TIME_STEP_LABELS, type Dataset, type Group } from '../domain/types';
 import { GROUP_LABEL, GROUP_SHORT } from '../domain/printers';
 import { Check, GroupTag, fmtMoney, fmtNum, fmtPct } from './common';
 import { GroupBarChart, GroupLineChart } from './charts';
@@ -144,8 +144,8 @@ function YieldTable({ r }: { r: AnalysisResult }) {
             <tr>
               <th>Cycle</th>
               {GROUPS.map((g) => (
-                <th key={g} className="r" colSpan={3}>
-                  {GROUP_LABEL[g]}: good / QC yield / overall
+                <th key={g} className="r" colSpan={4}>
+                  {GROUP_LABEL[g]}: good / seconds / scrap / overall yield
                 </th>
               ))}
               <th className="r">Diff (M − C)</th>
@@ -161,7 +161,8 @@ function YieldTable({ r }: { r: AnalysisResult }) {
                   <td>C{c.cycleNumber}</td>
                   {GROUPS.flatMap((g) => [
                     <td key={g + 'g'} className="r">{fmtNum(c[g].goodParts)}</td>,
-                    <td key={g + 'q'} className="r">{fmtPct(c[g].qcYield)}</td>,
+                    <td key={g + 's'} className="r">{fmtNum(c[g].secondsParts)}</td>,
+                    <td key={g + 'x'} className="r">{fmtNum(c[g].scrapParts)}</td>,
                     <td key={g + 'o'} className="r">{fmtPct(c[g].overallYield)}</td>,
                   ])}
                   <td className="r">{d === null ? '–' : `${d >= 0 ? '+' : ''}${(d * 100).toFixed(1)} pts`}</td>
@@ -259,7 +260,7 @@ function RepairsCard({ r }: { r: AnalysisResult }) {
   const parts = [...new Set(GROUPS.flatMap((g) => Object.keys(r.reactive[g].parts)))];
   return (
     <div className="card stack">
-      <h3>Reactive maintenance</h3>
+      <h3>Maintenance labor and repairs</h3>
       <div className="tiles">
         {GROUPS.map((g) => (
           <div key={g} className="stat">
@@ -275,9 +276,30 @@ function RepairsCard({ r }: { r: AnalysisResult }) {
           <div className="value">{fmtNum((r.labor.oneTimeMinutes + r.labor.perPrintMinutes) / 60, 1)} h</div>
           <div className="sub">
             One-time {fmtNum(r.labor.oneTimeMinutes)} min · per print {fmtNum(r.labor.perPrintMinutes)} min
+            {r.labor.perPrintAvgPerPlate !== null && ` (≈ ${fmtNum(r.labor.perPrintAvgPerPlate, 1)} min per plate)`}
           </div>
         </div>
       </div>
+      <table>
+        <thead>
+          <tr>
+            <th>One-time step</th>
+            <th className="r">Group total</th>
+            <th className="r">Printers done</th>
+            <th className="r">Average per printer</th>
+          </tr>
+        </thead>
+        <tbody>
+          {r.labor.steps.map((s) => (
+            <tr key={s.step}>
+              <td>{ONE_TIME_STEP_LABELS[s.step]}</td>
+              <td className="r">{fmtNum(s.minutes)} min</td>
+              <td className="r">{s.printersDone}</td>
+              <td className="r">{s.avgPerPrinter === null ? '–' : `${fmtNum(s.avgPerPrinter, 1)} min`}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
       {parts.length > 0 && (
         <table>
           <thead>

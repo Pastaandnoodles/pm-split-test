@@ -6,7 +6,7 @@ import type { Dataset } from '../domain/types';
 /** Live view of every table except photos. The data set is small (a few thousand rows), so loading it all is fine. */
 export function useDataset(): Dataset | undefined {
   return useLiveQuery(async () => {
-    const [settings, files, cycles, plateRuns, errorCodes, reactive, downtime, bins, deviations, oneTime] = await Promise.all([
+    const [settings, files, cycles, plateRuns, errorCodes, reactive, downtime, bins, deviations, oneTime, pmTime] = await Promise.all([
       getSettings(),
       db.files.toArray(),
       db.cycles.toArray(),
@@ -17,6 +17,7 @@ export function useDataset(): Dataset | undefined {
       db.bins.toArray(),
       db.deviations.toArray(),
       db.oneTime.toArray(),
+      db.pmTime.toArray(),
     ]);
     return {
       printers: buildPrinters(settings.groupOverrides),
@@ -29,6 +30,7 @@ export function useDataset(): Dataset | undefined {
       bins: bins.filter((r) => !r.voided),
       deviations: deviations.filter((r) => !r.voided),
       oneTime: oneTime.filter((r) => !r.voided),
+      pmTime: pmTime.filter((r) => !r.voided),
       settings,
     };
   });

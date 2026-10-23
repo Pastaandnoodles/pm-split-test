@@ -17,6 +17,7 @@ const CSV_LABELS: Record<CsvTable, string> = {
   bins: 'Bin weights',
   deviations: 'Deviations',
   oneTime: 'One-time PM',
+  pmTime: 'PM time',
   audit: 'Audit log',
 };
 

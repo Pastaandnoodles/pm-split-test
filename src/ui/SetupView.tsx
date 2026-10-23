@@ -3,7 +3,8 @@ import { ONE_TIME_STEPS, ONE_TIME_STEP_LABELS, DEFAULT_PASS_FAIL_RULE, type Data
 import { GROUP_SHORT, SHELVES, defaultGroup } from '../domain/printers';
 import { createRecord, saveSettings, voidRecord } from '../db/db';
 import { FileForm } from './CyclesView';
-import { CommitNumberField, ConfirmButton, NumberField, Sheet, TextField, fmtTime } from './common';
+import { CommitNumberField, ConfirmButton, NumberField, TextField } from './common';
+import { PmTimeLog } from './PmTimeLog';
 
 export function SetupView({ ds }: { ds: Dataset }) {
   return (
@@ -94,10 +95,13 @@ function AssignmentCard({ ds }: { ds: Dataset }) {
 }
 
 function OneTimeCard({ ds }: { ds: Dataset }) {
-  const [editing, setEditing] = useState<{ printer: Printer; step: OneTimeStepKey } | null>(null);
   const maint = ds.printers.filter((p) => p.group === 'maintenance');
   const done = (pid: string, step: OneTimeStepKey) => ds.oneTime.find((s) => s.printerId === pid && s.step === step);
   const totalDone = maint.filter((p) => ONE_TIME_STEPS.every((s) => done(p.id, s))).length;
+  const unlocked = (pid: string, i: number) => i === 0 || !!done(pid, ONE_TIME_STEPS[i - 1]);
+  const laterDone = (pid: string, i: number) => ONE_TIME_STEPS.slice(i + 1).some((s) => done(pid, s));
+  const ready = (i: number) => maint.filter((p) => !done(p.id, ONE_TIME_STEPS[i]) && unlocked(p.id, i));
+  const markDone = (pid: string, step: OneTimeStepKey) => createRecord('oneTime', { printerId: pid, step, doneAt: new Date().toISOString() });
 
   return (
     <div className="card stack">
@@ -108,8 +112,25 @@ function OneTimeCard({ ds }: { ds: Dataset }) {
         </span>
       </div>
       <p className="secondary small" style={{ margin: 0 }}>
-        Maintenance group only, in this order: fans → debris → lead screws → nozzle tip. Tap a step to record its minutes. A step unlocks once the previous one is done.
+        Maintenance group only, in this order: fans → debris → lead screws → nozzle tip. Tap a cell to mark that printer done (tap a ✓ twice to undo). A step unlocks once the
+        previous one is done. Time isn't logged per printer: enter the total time for each step for the whole group below, and the app works out the average per printer.
       </p>
+      <div className="grid-2">
+        {ONE_TIME_STEPS.map((s, i) => {
+          const n = maint.filter((p) => done(p.id, s)).length;
+          return (
+            <div key={s} className="card stack" style={{ background: 'var(--page)' }}>
+              <h3>
+                {i + 1}. {ONE_TIME_STEP_LABELS[s]}
+              </h3>
+              <span className="secondary num">
+                {n}/{maint.length} printers done
+              </span>
+              <PmTimeLog ds={ds} scope="one_time" step={s} divisor={n} divisorLabel="printer" />
+            </div>
+          );
+        })}
+      </div>
       <div className="table-wrap">
         <table>
           <thead>
@@ -121,6 +142,19 @@ function OneTimeCard({ ds }: { ds: Dataset }) {
                 </th>
               ))}
             </tr>
+            <tr>
+              <th />
+              {ONE_TIME_STEPS.map((s, i) => {
+                const r = ready(i);
+                return (
+                  <th key={s}>
+                    <ConfirmButton className="btn small" disabled={r.length === 0} onConfirm={async () => { for (const p of r) await markDone(p.id, s); }}>
+                      Mark all ready ({r.length})
+                    </ConfirmButton>
+                  </th>
+                );
+              })}
+            </tr>
           </thead>
           <tbody>
             {maint.map((p) => (
@@ -130,16 +164,15 @@ function OneTimeCard({ ds }: { ds: Dataset }) {
                 </td>
                 {ONE_TIME_STEPS.map((s, i) => {
                   const d = done(p.id, s);
-                  const unlocked = i === 0 || !!done(p.id, ONE_TIME_STEPS[i - 1]);
                   return (
                     <td key={s}>
                       {d ? (
-                        <button className="btn small" onClick={() => setEditing({ printer: p, step: s })}>
-                          <span className="st-pass">✓</span> {d.minutes} min
-                        </button>
+                        <ConfirmButton className="btn small" disabled={laterDone(p.id, i)} onConfirm={() => voidRecord('oneTime', d.id)}>
+                          <span className="st-pass">✓</span> Done
+                        </ConfirmButton>
                       ) : (
-                        <button className="btn small" disabled={!unlocked} onClick={() => setEditing({ printer: p, step: s })}>
-                          {unlocked ? 'Mark done' : '—'}
+                        <button className="btn small" disabled={!unlocked(p.id, i)} onClick={() => markDone(p.id, s)}>
+                          {unlocked(p.id, i) ? 'Mark done' : '—'}
                         </button>
                       )}
                     </td>
@@ -150,43 +183,7 @@ function OneTimeCard({ ds }: { ds: Dataset }) {
           </tbody>
         </table>
       </div>
-      {editing && <StepSheet ds={ds} printer={editing.printer} step={editing.step} onClose={() => setEditing(null)} />}
     </div>
-  );
-}
-
-function StepSheet({ ds, printer, step, onClose }: { ds: Dataset; printer: Printer; step: OneTimeStepKey; onClose: () => void }) {
-  const existing = ds.oneTime.find((s) => s.printerId === printer.id && s.step === step);
-  const [minutes, setMinutes] = useState<number | undefined>(existing?.minutes);
-  const later = ONE_TIME_STEPS.slice(ONE_TIME_STEPS.indexOf(step) + 1).some((s) => ds.oneTime.some((x) => x.printerId === printer.id && x.step === s));
-  return (
-    <Sheet title={<h2>{printer.id}: {ONE_TIME_STEP_LABELS[step]}</h2>} onClose={onClose}>
-      {existing && <p className="secondary">Done {fmtTime(existing.doneAt)}</p>}
-      <NumberField label="Time spent on this printer" suffix="min" value={minutes} onChange={setMinutes} min={0} />
-      <div className="btn-row">
-        <button
-          className="btn primary"
-          disabled={minutes === undefined}
-          onClick={async () => {
-            if (existing) await voidRecord('oneTime', existing.id);
-            await createRecord('oneTime', { printerId: printer.id, step, minutes: minutes!, doneAt: existing?.doneAt ?? new Date().toISOString() });
-            onClose();
-          }}
-        >
-          {existing ? 'Update' : 'Mark done'}
-        </button>
-        {existing && !later && (
-          <ConfirmButton
-            onConfirm={async () => {
-              await voidRecord('oneTime', existing.id);
-              onClose();
-            }}
-          >
-            Undo step
-          </ConfirmButton>
-        )}
-      </div>
-    </Sheet>
   );
 }
 
@@ -225,7 +222,6 @@ function ValuesCard({ ds }: { ds: Dataset }) {
       <h2>Test values</h2>
       <div className="grid-3">
         <CommitNumberField label="Plate goal per group" value={s.goalPerGroup} onCommit={(v) => v && saveSettings({ goalPerGroup: v })} step="1" min={1} />
-        <CommitNumberField label="Per-print PM labor default" suffix="min" value={s.perPrintPmMinutesDefault} onCommit={(v) => saveSettings({ perPrintPmMinutesDefault: v ?? 0 })} min={0} />
         <CommitNumberField label="Calibration machine time per print" suffix="min" value={s.calibrationMachineMinutes} onCommit={(v) => saveSettings({ calibrationMachineMinutes: v ?? 0 })} min={0} />
         <CommitNumberField label="Missing-parts tolerance" suffix="%" value={s.missingTolerancePct} onCommit={(v) => saveSettings({ missingTolerancePct: v ?? 2 })} min={0} />
       </div>

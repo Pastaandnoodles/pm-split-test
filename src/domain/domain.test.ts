@@ -1,16 +1,16 @@
-import { describe, expect, it } from 'vitest';
+﻿import { describe, expect, it } from 'vitest';
 import { buildPrinters, defaultGroup, parsePrinterId, printerId, shelfOf } from './printers';
 import { computeGroupCycleYield, crossBinHint, partsFromWeight } from './yield';
 import { comparePaired, compareUnits, wilson } from './stats';
 import { analyze, buildVerdict } from './analysis';
-import { DEFAULT_SETTINGS, type BinWeight, type Cycle, type Dataset, type FileSpec, type PlateRun } from './types';
+import { DEFAULT_SETTINGS, type BinWeight, type Cycle, type Dataset, type FileSpec, type PlateRun, type PmTime } from './types';
 
 const T = '2026-10-22T08:00:00.000Z';
 const base = (id: string) => ({ id, createdAt: T, updatedAt: T });
 const checks = { purgeCleared: true, nozzleWiped: false, plateCleaned: true, calibrationRun: true };
 
 function run(id: string, printer: string, cycleId: string, outcome: PlateRun['outcome'], extra: Partial<PlateRun> = {}): PlateRun {
-  return { ...base(id), printerId: printer, cycleId, outcome, checks, correctPlatePool: true, pmMinutes: 0, ...extra };
+  return { ...base(id), printerId: printer, cycleId, outcome, checks, correctPlatePool: true, ...extra };
 }
 
 describe('printers', () => {
@@ -59,11 +59,14 @@ describe('yield', () => {
     const runs = ctrl.map((p, i) => run(`r${i}`, p.id, 'c1', i < 10 ? 'pass' : 'fail_finished'));
     const bins: BinWeight[] = [
       { ...base('b1'), cycleId: 'c1', group: 'control', kind: 'good', grossG: 500 + 2.5 * 900 },
-      { ...base('b2'), cycleId: 'c1', group: 'control', kind: 'reject', grossG: 500 + 2.5 * 70 },
+      { ...base('b2'), cycleId: 'c1', group: 'control', kind: 'seconds', grossG: 500 + 2.5 * 40 },
+      { ...base('b3'), cycleId: 'c1', group: 'control', kind: 'scrap', grossG: 500 + 2.5 * 30 },
     ];
     const y = computeGroupCycleYield(cycle, file, 'control', runs, printers, bins, 2);
     expect(y.expectedParts).toBe(1000);
     expect(y.goodParts).toBe(900);
+    expect(y.secondsParts).toBe(40);
+    expect(y.scrapParts).toBe(30);
     expect(y.rejectedParts).toBe(70);
     expect(y.missingParts).toBe(30);
     expect(y.qcYield).toBeCloseTo(900 / 970);
@@ -76,7 +79,8 @@ describe('yield', () => {
     const runs = ctrl.map((p, i) => run(`r${i}`, p.id, 'c1', 'pass'));
     const bins: BinWeight[] = [
       { ...base('b1'), cycleId: 'c1', group: 'control', kind: 'good', grossG: 500 + 2.5 * 950 },
-      { ...base('b2'), cycleId: 'c1', group: 'control', kind: 'reject', grossG: 500 + 2.5 * 40 },
+      { ...base('b2'), cycleId: 'c1', group: 'control', kind: 'seconds', grossG: 500 + 2.5 * 25 },
+      { ...base('b3'), cycleId: 'c1', group: 'control', kind: 'scrap', grossG: 500 + 2.5 * 15 },
     ];
     const y = computeGroupCycleYield(cycle, file, 'control', runs, printers, bins, 2);
     expect(y.missingParts).toBe(10);
@@ -121,17 +125,21 @@ describe('analysis', () => {
     const cycles: Cycle[] = [1, 2, 3].map((n) => ({ ...base(`c${n}`), number: n, fileId: 'f1', startedAt: T, binTareG: 0 }));
     const plateRuns: PlateRun[] = [];
     const bins: BinWeight[] = [];
+    const pmTime: PmTime[] = [];
     for (const c of cycles) {
       for (const p of printers) {
         // Maintenance: all pass. Control: every 4th printer fails.
         const fail = p.group === 'control' && p.column % 4 === 1 && p.row === 'a';
-        plateRuns.push(run(`${c.id}-${p.id}`, p.id, c.id, fail ? 'fail_stopped' : 'pass', fail ? { stoppedBy: 'printer', progressPct: 40, scrapMassG: 80 } : { pmMinutes: p.group === 'maintenance' ? 3 : 0 }));
+        plateRuns.push(run(`${c.id}-${p.id}`, p.id, c.id, fail ? 'fail_stopped' : 'pass', fail ? { stoppedBy: 'printer', progressPct: 40, scrapMassG: 80 } : {}));
       }
       const passC = plateRuns.filter((r) => r.cycleId === c.id && r.outcome === 'pass' && printers.find((p) => p.id === r.printerId)!.group === 'control').length;
       bins.push({ ...base(`${c.id}-cg`), cycleId: c.id, group: 'control', kind: 'good', grossG: passC * 95 * 2 });
-      bins.push({ ...base(`${c.id}-cr`), cycleId: c.id, group: 'control', kind: 'reject', grossG: passC * 5 * 2 });
+      bins.push({ ...base(`${c.id}-cs`), cycleId: c.id, group: 'control', kind: 'seconds', grossG: passC * 3 * 2 });
+      bins.push({ ...base(`${c.id}-cx`), cycleId: c.id, group: 'control', kind: 'scrap', grossG: passC * 2 * 2 });
       bins.push({ ...base(`${c.id}-mg`), cycleId: c.id, group: 'maintenance', kind: 'good', grossG: 38 * 97 * 2 });
-      bins.push({ ...base(`${c.id}-mr`), cycleId: c.id, group: 'maintenance', kind: 'reject', grossG: 38 * 3 * 2 });
+      bins.push({ ...base(`${c.id}-ms`), cycleId: c.id, group: 'maintenance', kind: 'seconds', grossG: 38 * 2 * 2 });
+      bins.push({ ...base(`${c.id}-mx`), cycleId: c.id, group: 'maintenance', kind: 'scrap', grossG: 38 * 1 * 2 });
+      pmTime.push({ ...base(`${c.id}-pt`), scope: 'per_print', cycleId: c.id, minutes: 114 });
     }
     return {
       printers,
@@ -143,7 +151,8 @@ describe('analysis', () => {
       downtime: [],
       bins,
       deviations: [],
-      oneTime: [],
+      oneTime: printers.filter((p) => p.group === 'maintenance').map((p) => ({ ...base(`ot-${p.id}`), printerId: p.id, step: 'fans' as const, doneAt: T })),
+      pmTime: [...pmTime, { ...base('ot-fans'), scope: 'one_time', step: 'fans', minutes: 190 }],
       settings: { ...DEFAULT_SETTINGS, valuePerGoodPart: 0.5, laborRatePerHr: 20 },
     };
   }
@@ -160,6 +169,10 @@ describe('analysis', () => {
     expect(r.economics.netPerCycle).not.toBeNull();
     expect(r.scrap.control.meanProgressPct).toBe(40);
     expect(r.verdict.preliminary).toBe(true);
+    expect(r.cycleYields[0].maintenance.secondsParts).toBe(76);
+    expect(r.labor.steps[0]).toMatchObject({ step: 'fans', minutes: 190, printersDone: 38, avgPerPrinter: 5 });
+    expect(r.labor.perPrintMinutes).toBe(342);
+    expect(r.labor.perPrintAvgPerPlate).toBeCloseTo(3); // 342 min / 114 Maintenance plates
   });
 
   it('excludes non-printer cancels when asked', () => {

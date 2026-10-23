@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import type { BinKind, Cycle, Dataset, Group } from '../domain/types';
+import { BIN_KINDS, BIN_KIND_LABELS, type BinKind, type Cycle, type Dataset, type Group } from '../domain/types';
+import { PmTimeLog } from './PmTimeLog';
 import { computeGroupCycleYield, crossBinHint, findBin, type GroupCycleYield } from '../domain/yield';
 import { createRecord, saveSettings, updateRecord } from '../db/db';
 import { openCycle, openDowntime } from '../db/useDataset';
@@ -83,10 +84,16 @@ export function FileForm({ onSaved, onCancel }: { onSaved?: (id: string) => void
       <div className="grid-2">
         <TextField label="File name" value={name} onChange={setName} />
         <NumberField label="Wigglitz per plate" value={ppp} onChange={setPpp} step="1" min={1} />
-        <NumberField label="Sample: number of good wigglitz weighed" value={sampleCount} onChange={setSampleCount} step="1" min={1} />
-        <NumberField label="Sample weight" suffix="g" value={sampleWeight} onChange={setSampleWeight} min={0} />
       </div>
-      <span className="secondary">Unit weight: {unit ? `${unit.toFixed(3)} g per wigglitz` : '–'}</span>
+      <p className="secondary small" style={{ margin: 0 }}>
+        <strong>Sample weighing:</strong> count out some good wigglitz from this file (20 is plenty), put them on the scale together, and enter the count and the total weight.
+        The app divides to get the weight of one wigglitz, which turns every bin weight into a part count.
+      </p>
+      <div className="grid-2">
+        <NumberField label="How many wigglitz on the scale" value={sampleCount} onChange={setSampleCount} step="1" min={1} />
+        <NumberField label="Their total weight" suffix="g" value={sampleWeight} onChange={setSampleWeight} min={0} />
+      </div>
+      <span className="secondary">Weight of one wigglitz: {unit ? `${unit.toFixed(3)} g` : '–'}</span>
       <div className="btn-row">
         <button
           className="btn primary"
@@ -152,11 +159,33 @@ function CycleCard({ ds, cycle, isOpen }: { ds: Dataset; cycle: Cycle; isOpen?: 
       </span>
 
       <h3>Bin weights</h3>
+      <p className="secondary small" style={{ margin: 0 }}>
+        Good = sold. Seconds = donated, not sold. Scrap = unredeemable, recycled. Enter each bin's gross weight (bin + parts).
+      </p>
       <div className="grid-3">
         <CommitNumberField label="Empty bin (tare)" suffix="g" value={cycle.binTareG} onCommit={(v) => updateRecord('cycles', cycle.id, { binTareG: v })} min={0} />
-        {GROUPS.flatMap((g) =>
-          (['good', 'reject'] as BinKind[]).map((k) => <BinField key={g + k} ds={ds} cycleId={cycle.id} group={g} kind={k} />),
-        )}
+      </div>
+      {GROUPS.map((g) => (
+        <div key={g} className="stack">
+          <GroupTag group={g} />
+          <div className="grid-3">
+            {BIN_KINDS.map((k) => (
+              <BinField key={k} ds={ds} cycleId={cycle.id} group={g} kind={k} />
+            ))}
+          </div>
+        </div>
+      ))}
+
+      <div className="stack">
+        <h3>Per-print maintenance time (whole Maintenance group)</h3>
+        <span className="secondary small">Plate cleaning, calibration and purge clearing for all Maintenance printers this cycle.</span>
+        <PmTimeLog
+          ds={ds}
+          scope="per_print"
+          cycleId={cycle.id}
+          divisor={runs.filter((r) => ds.printers.find((p) => p.id === r.printerId)?.group === 'maintenance').length}
+          divisorLabel="plate"
+        />
       </div>
 
       <div className="table-wrap">
@@ -168,7 +197,8 @@ function CycleCard({ ds, cycle, isOpen }: { ds: Dataset; cycle: Cycle; isOpen?: 
               <th className="r">Passed</th>
               <th className="r">Expected parts</th>
               <th className="r">Good</th>
-              <th className="r">Rejected</th>
+              <th className="r">Seconds</th>
+              <th className="r">Scrap</th>
               <th className="r">Missing</th>
               <th className="r">QC yield</th>
               <th className="r">Overall yield</th>
@@ -186,7 +216,8 @@ function CycleCard({ ds, cycle, isOpen }: { ds: Dataset; cycle: Cycle; isOpen?: 
                   <td className="r">{y.passedPlates}</td>
                   <td className="r">{fmtNum(y.expectedParts)}</td>
                   <td className="r">{fmtNum(y.goodParts)}</td>
-                  <td className="r">{fmtNum(y.rejectedParts)}</td>
+                  <td className="r">{fmtNum(y.secondsParts)}</td>
+                  <td className="r">{fmtNum(y.scrapParts)}</td>
                   <td className="r">{fmtNum(y.missingParts)}</td>
                   <td className="r">{fmtPct(y.qcYield)}</td>
                   <td className="r">{fmtPct(y.overallYield)}</td>
@@ -208,7 +239,7 @@ function CycleCard({ ds, cycle, isOpen }: { ds: Dataset; cycle: Cycle; isOpen?: 
 
 function BinField({ ds, cycleId, group, kind }: { ds: Dataset; cycleId: string; group: Group; kind: BinKind }) {
   const bin = findBin(ds.bins, cycleId, group, kind);
-  const label = `${group === 'control' ? 'Control' : 'Maintenance'} ${kind} bin (gross)`;
+  const label = `${group === 'control' ? 'Control' : 'Maintenance'}: ${BIN_KIND_LABELS[kind].toLowerCase()} bin`;
   return (
     <CommitNumberField
       label={label}

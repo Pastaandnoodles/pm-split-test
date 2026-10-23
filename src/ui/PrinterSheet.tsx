@@ -87,20 +87,19 @@ function DowntimeCard({ printerId, down }: { printerId: string; down?: Dataset['
 
 type Draft = Omit<PlateRun, 'id' | 'createdAt' | 'updatedAt' | 'voided'>;
 
-function emptyDraft(printer: Printer, cycle: Cycle, pmDefault: number): Draft {
+function emptyDraft(printer: Printer, cycle: Cycle): Draft {
   return {
     printerId: printer.id,
     cycleId: cycle.id,
     outcome: undefined as unknown as Outcome,
     checks: { purgeCleared: false, nozzleWiped: false, plateCleaned: false, calibrationRun: false },
     correctPlatePool: true,
-    pmMinutes: printer.group === 'maintenance' ? pmDefault : 0,
   };
 }
 
 function PlateCard({ ds, printer, cycle }: { ds: Dataset; printer: Printer; cycle: Cycle }) {
   const existing = ds.plateRuns.find((r) => r.cycleId === cycle.id && r.printerId === printer.id);
-  const [draft, setDraft] = useState<Draft>(() => existing ?? emptyDraft(printer, cycle, ds.settings.perPrintPmMinutesDefault));
+  const [draft, setDraft] = useState<Draft>(() => existing ?? emptyDraft(printer, cycle));
   const [editing, setEditing] = useState(!existing);
   const [saving, setSaving] = useState(false);
   const isM = printer.group === 'maintenance';
@@ -185,7 +184,6 @@ function PlateCard({ ds, printer, cycle }: { ds: Dataset; printer: Printer; cycl
             <Check label="Loose purge cleared (as needed)" checked={draft.checks.purgeCleared} onChange={(v) => set({ checks: { ...draft.checks, purgeCleared: v } })} />
             <Check label="Nozzle tip wiped (as needed)" checked={draft.checks.nozzleWiped} onChange={(v) => set({ checks: { ...draft.checks, nozzleWiped: v } })} />
           </div>
-          <NumberField label="Per-print PM labor" suffix="min" value={draft.pmMinutes} onChange={(v) => set({ pmMinutes: v ?? 0 })} min={0} />
         </div>
       )}
       <Check
@@ -284,7 +282,6 @@ function PlateSummary({ run }: { run: PlateRun }) {
         {run.progressPct !== undefined && `Progress ${run.progressPct}% · `}
         {run.scrapMassG !== undefined && `Scrap ${run.scrapMassG} g · `}
         {run.correctPlatePool ? 'Correct plate pool' : 'Wrong plate pool'}
-        {run.pmMinutes ? ` · PM ${run.pmMinutes} min` : ''}
       </span>
       {run.failureNote && <span className="secondary">{run.failureNote}</span>}
       {run.photoId && <PhotoView id={run.photoId} />}

@@ -43,8 +43,9 @@ All test data is captured through this app. The paper error-code sheets on each 
 | Plate cleaned (tape on tab) | Per print |
 | Calibration run | Per print |
 
-- The one-time order is fixed: fans → debris → lead screws → nozzle tip. The app enforces the order in a checklist and logs **minutes per step per printer**.
-- Per-print steps are logged as checkboxes on each plate run, with a per-print labor-minutes value (a default estimate that can be overridden).
+- The one-time order is fixed: fans → debris → lead screws → nozzle tip. The app enforces the order in a per-printer done checklist (one tap, or "Mark all ready").
+- **Time is logged for the whole group, never per printer** (timing each printer takes too long). One-time steps: total minutes per step for the whole group (Setup tab). Per-print steps: total minutes for the whole Maintenance group per cycle (Cycles tab). The app derives the average per printer (step total ÷ printers done) and per plate (per-print total ÷ Maintenance plates).
+- Per-print steps are logged as checkboxes on each plate run (no time on the plate).
 - Control: no process changes, reactive maintenance only.
 
 ### Plate pools
@@ -59,15 +60,16 @@ All test data is captured through this app. The paper error-code sheets on each 
 
 | Entity | Key fields |
 |---|---|
-| `Printer` | id, column, row (top/bottom), shelf, group, one-time PM steps (done, timestamp, minutes) |
+| `Printer` | id, column, row (top/bottom), shelf, group, one-time PM steps (done, timestamp) |
+| `PmTime` | group-level PM minutes: `one_time` (per step) or `per_print` (per cycle); entries are summed |
 | `File` | name, parts_per_plate, unit_weight_g |
 | `Cycle` | number, file_id, started_at, ended_at, bin tare weight, notes |
-| `PlateRun` (printer × cycle) | outcome `pass` / `fail_finished` / `fail_stopped` (see Pass/fail rule); `stopped_by` `printer` / `canceled` (for `fail_stopped`); pre-print checks (purge cleared, nozzle wiped, plate cleaned, calibration run); correct_plate_pool; per-print PM minutes; cancel reason |
+| `PlateRun` (printer × cycle) | outcome `pass` / `fail_finished` / `fail_stopped` (see Pass/fail rule); `stopped_by` `printer` / `canceled` (for `fail_stopped`); pre-print checks (purge cleared, nozzle wiped, plate cleaned, calibration run); correct_plate_pool; cancel reason |
 | Failure fields (on `PlateRun` when it isn't a pass) | `failureType` from fixed list, **required photo** (`photoId` → `photos` table), note, `fatalErrorId`, **`progressPct`** (from printer screen, `fail_stopped` only), **`scrapMassG`** |
 | `ErrorCode` | printer, cycle, HMS code (e.g. `0300-0100-0001-0007`), `resumed` or `fatal`, note |
 | `ReactiveMaintenance` (both groups) | printer, cycle, action, part replaced (optional), minutes |
 | `Downtime` | printer, down_at, up_at, reason |
-| `BinWeight` | cycle, group, bin kind `good` / `reject`, gross weight, tare |
+| `BinWeight` | cycle, group, bin kind `good` (sold) / `seconds` (donated, not sold) / `scrap` (unredeemable, recycled), gross weight; tare is on the cycle |
 | `Deviation` | type, printer/cycle (optional), description, include/exclude flag for analysis |
 | `AuditLog` | every create/edit/void, with before/after values and timestamp |
 
@@ -91,12 +93,14 @@ All test data is captured through this app. The paper error-code sheets on each 
 ```
 expected_parts = passed_plates × parts_per_plate
 good_parts     = (good_bin_gross − bin_tare) / unit_weight_g      (rounded)
-rejected_parts = (reject_bin_gross − bin_tare) / unit_weight_g    (rounded)
+seconds_parts  = (seconds_bin_gross − bin_tare) / unit_weight_g  (rounded)  donated, not sold
+scrap_parts    = (scrap_bin_gross − bin_tare) / unit_weight_g    (rounded)  recycled
+rejected_parts = seconds_parts + scrap_parts
 missing_parts  = expected_parts − good_parts − rejected_parts     (negative = extra parts)
 qc_yield       = good_parts / (good_parts + rejected_parts)
 overall_yield  = good_parts / (all_plates_started × parts_per_plate)   ← headline metric
 ```
-The operator weighs **both the good and the reject bin** for each group every cycle (4 weighings per cycle). The `missing_parts` value accounts for lost or misplaced parts. Flag a cycle when `|missing_parts|` exceeds the tolerance (configurable, default 2% of expected). If one group is short and the other is over by about the same amount, a plate probably went into the wrong group's bin. Reject fragments make the reject count approximate, which is why the tolerance exists.
+The operator weighs **the good, seconds and scrap bins** for each group every cycle (6 weighings per cycle). Only good parts earn revenue in the win formula. Old data with a single `reject` bin is migrated to `scrap`. The `missing_parts` value accounts for lost or misplaced parts. Flag a cycle when `|missing_parts|` exceeds the tolerance (configurable, default 2% of expected). If one group is short and the other is over by about the same amount, a plate probably went into the wrong group's bin. Reject fragments make the reject count approximate, which is why the tolerance exists.
 
 **Unit weight** is set per file by weighing a sample: the operator weighs N good parts (default 20), and the app divides. That averages out part-to-part variation. The scale reads to 0.1 g, and wigglitz weigh 2–5 g, so scale error is negligible.
 
@@ -125,7 +129,6 @@ Control has no PM minutes by definition. Its labor shows up through reactive mai
 ## Setup values (entered in the app)
 
 - Per file: name, parts per plate, unit weight (from the sample weighing).
-- Per-print PM minutes estimate (plate clean + calibration + purge clear), overridable per print.
 - Calibration machine minutes per print.
 - Dollars: labor rate ($/hr), value per good wigglitz, filament cost ($/kg), machine-hour value, and a cost per replacement part type.
 - Missing-parts tolerance (default 2%).

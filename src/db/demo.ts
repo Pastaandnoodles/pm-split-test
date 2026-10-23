@@ -25,7 +25,10 @@ export async function loadDemo(): Promise<void> {
   await db.files.add(file);
 
   for (const p of printers.filter((x) => x.group === 'maintenance')) {
-    for (const step of ONE_TIME_STEPS) await db.oneTime.add({ ...rec(t0), printerId: p.id, step, minutes: Math.round(3 + rand() * 6), doneAt: iso(t0) });
+    for (const step of ONE_TIME_STEPS) await db.oneTime.add({ ...rec(t0), printerId: p.id, step, doneAt: iso(t0) });
+  }
+  for (const [step, minutes] of [['fans', 190], ['debris', 150], ['leadScrews', 305], ['nozzle', 115]] as const) {
+    await db.pmTime.add({ ...rec(t0), scope: 'one_time', step, minutes });
   }
 
   for (let n = 1; n <= 4; n++) {
@@ -45,7 +48,6 @@ export async function loadDemo(): Promise<void> {
         outcome: 'pass',
         checks: { purgeCleared: isM && rand() < 0.4, nozzleWiped: isM && rand() < 0.2, plateCleaned: isM, calibrationRun: isM },
         correctPlatePool: true,
-        pmMinutes: isM ? 3 : 0,
       };
       if (r < failP) {
         const stopped = rand() < 0.6;
@@ -70,9 +72,13 @@ export async function loadDemo(): Promise<void> {
         await db.reactive.add({ ...rec(start), printerId: p.id, cycleId: cycle.id, action: 'clear_clog', part: rand() < 0.3 ? 'Nozzle' : undefined, minutes: Math.round(10 + rand() * 20) });
       }
     }
+    const weigh = (parts: number, noise: number) => Math.round((850 + parts * 3.2 + (rand() - 0.5) * noise) * 10) / 10;
     for (const g of ['control', 'maintenance'] as const) {
-      await db.bins.add({ ...rec(start), cycleId: cycle.id, group: g, kind: 'good', grossG: Math.round((850 + good[g] * 3.2 + (rand() - 0.5) * 20) * 10) / 10 });
-      await db.bins.add({ ...rec(start), cycleId: cycle.id, group: g, kind: 'reject', grossG: Math.round((850 + rej[g] * 3.2 + (rand() - 0.5) * 10) * 10) / 10 });
+      const seconds = Math.round(rej[g] * 0.6);
+      await db.bins.add({ ...rec(start), cycleId: cycle.id, group: g, kind: 'good', grossG: weigh(good[g], 20) });
+      await db.bins.add({ ...rec(start), cycleId: cycle.id, group: g, kind: 'seconds', grossG: weigh(seconds, 6) });
+      await db.bins.add({ ...rec(start), cycleId: cycle.id, group: g, kind: 'scrap', grossG: weigh(rej[g] - seconds, 6) });
     }
+    await db.pmTime.add({ ...rec(start), scope: 'per_print', cycleId: cycle.id, minutes: Math.round(100 + rand() * 30) });
   }
 }

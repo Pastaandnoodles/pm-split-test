@@ -11,6 +11,7 @@ import type {
   OneTimeStep,
   Photo,
   PlateRun,
+  PmTime,
   ReactiveMaintenance,
   Settings,
 } from '../domain/types';
@@ -26,6 +27,7 @@ export class PmDb extends Dexie {
   bins!: Table<BinWeight, string>;
   deviations!: Table<Deviation, string>;
   oneTime!: Table<OneTimeStep, string>;
+  pmTime!: Table<PmTime, string>;
   photos!: Table<Photo, string>;
   audit!: Table<AuditEntry, number>;
   settings!: Table<Settings, string>;
@@ -46,13 +48,24 @@ export class PmDb extends Dexie {
       audit: '++seq, at, table, recordId',
       settings: 'key',
     });
+    // v2: group-level PM time; the single reject bin split into seconds + scrap (old rejects become scrap).
+    this.version(2)
+      .stores({ pmTime: 'id, scope, cycleId' })
+      .upgrade((tx) =>
+        tx
+          .table('bins')
+          .toCollection()
+          .modify((b: { kind: string }) => {
+            if (b.kind === 'reject') b.kind = 'scrap';
+          }),
+      );
   }
 }
 
 export const db = new PmDb();
 
 /** Tables whose records carry BaseRecord fields and go through the audit trail. */
-export const RECORD_TABLES = ['files', 'cycles', 'plateRuns', 'errorCodes', 'reactive', 'downtime', 'bins', 'deviations', 'oneTime'] as const;
+export const RECORD_TABLES = ['files', 'cycles', 'plateRuns', 'errorCodes', 'reactive', 'downtime', 'bins', 'deviations', 'oneTime', 'pmTime'] as const;
 export type RecordTable = (typeof RECORD_TABLES)[number];
 
 type RecordOf<T extends RecordTable> = PmDb[T] extends Table<infer R, string> ? R : never;
