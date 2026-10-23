@@ -1,7 +1,19 @@
 import { compareUnits, comparePaired, bootstrapMean, wilson, type Interval, type PairedTest, type TwoGroupTest } from './stats';
 import { computeGroupCycleYield, crossBinHint, type GroupCycleYield } from './yield';
-import type { Dataset, FailureType, Group, OneTimeStepKey, PlateRun, Printer } from './types';
-import { FAILURE_TYPES, ONE_TIME_STEPS } from './types';
+import type { Dataset, FailureType, Group, OneTimeStepKey, PlateRun, Printer, ReactiveMaintenance, Settings } from './types';
+import { FAILURE_TYPES, ONE_TIME_STEPS, REACTIVE_ACTION_LABELS } from './types';
+
+/** Repairs aren't timed individually; labor uses the typical time for that kind of repair (legacy records keep their own minutes). */
+export function repairMinutes(r: ReactiveMaintenance, settings: Settings): number {
+  return r.minutes ?? settings.repairMinutes[r.action] ?? 0;
+}
+
+/** Printer time spent on a plate that produced nothing: the full print if it finished as a fail, the printed share if it stopped. */
+export function lostPrintMinutes(r: PlateRun, printTimeMin: number): number {
+  if (r.outcome === 'fail_finished') return printTimeMin;
+  if (r.outcome === 'fail_stopped') return printTimeMin * ((r.progressPct ?? 0) / 100);
+  return 0;
+}
 
 export interface AnalysisOptions {
   excludeDeviations: boolean;
@@ -92,7 +104,7 @@ export interface AnalysisResult {
   topCodes: { code: string; control: number; maintenance: number }[];
   reactive: Record<Group, { count: number; minutes: number; parts: Record<string, number> }>;
   rows: Record<Group, { top: Interval; bottom: Interval }>;
-  scrap: Record<Group, { stoppedCount: number; meanProgressPct: number | null; totalScrapG: number }>;
+  scrap: Record<Group, { stoppedCount: number; meanProgressPct: number | null; totalScrapG: number; lostPrintHours: number }>;
   labor: Labor;
   economics: Economics;
   verdict: Verdict;
@@ -168,7 +180,7 @@ export function analyze(ds: Dataset, opts: AnalysisOptions, now = new Date().toI
       resumed: pe.filter((e) => e.disposition === 'resumed').length,
       fatal: pe.filter((e) => e.disposition === 'fatal').length,
       reactiveCount: rm.length,
-      reactiveMinutes: rm.reduce((s, r) => s + r.minutes, 0),
+      reactiveMinutes: rm.reduce((s, r) => s + repairMinutes(r, settings), 0),
       downtimeHours: dt,
     };
   });
@@ -235,7 +247,7 @@ export function analyze(ds: Dataset, opts: AnalysisOptions, now = new Date().toI
     const gr = reactive.filter((r) => groupOf(r.printerId) === g);
     const parts: Record<string, number> = {};
     for (const r of gr) if (r.part) parts[r.part] = (parts[r.part] ?? 0) + 1;
-    reactiveByGroup[g] = { count: gr.length, minutes: gr.reduce((s, r) => s + r.minutes, 0), parts };
+    reactiveByGroup[g] = { count: gr.length, minutes: gr.reduce((s, r) => s + repairMinutes(r, settings), 0), parts };
   }
 
   const rows = {} as AnalysisResult['rows'];
@@ -255,6 +267,7 @@ export function analyze(ds: Dataset, opts: AnalysisOptions, now = new Date().toI
       stoppedCount: stopped.length,
       meanProgressPct: stopped.length ? stopped.reduce((s, r) => s + r.progressPct!, 0) / stopped.length : null,
       totalScrapG: gr.reduce((s, r) => s + (r.scrapMassG ?? 0), 0),
+      lostPrintHours: gr.reduce((s, r) => s + lostPrintMinutes(r, fileById.get(cycles.find((c) => c.id === r.cycleId)?.fileId ?? '')?.printTimeMin ?? 0), 0) / 60,
     };
   }
 
@@ -317,6 +330,13 @@ function computeEconomics(
   if (s.laborRatePerHr === undefined) missingInputs.push('Labor rate');
   if (s.filamentCostPerKg === undefined) missingInputs.push('Filament cost');
   if (s.machineHourValue === undefined) missingInputs.push('Machine-hour value');
+  const untimed = [...new Set(ds.reactive.filter((r) => !r.voided && r.minutes === undefined && s.repairMinutes[r.action] === undefined).map((r) => REACTIVE_ACTION_LABELS[r.action]))];
+  if (untimed.length) missingInputs.push(`Typical repair time for: ${untimed.join(', ')}`);
+  if (ds.cycles.some((c) => !c.voided && ds.files.find((f) => f.id === c.fileId)?.printTimeMin === undefined)) missingInputs.push('Print time for some files');
+  const printTimeOf = (cycleId: string) => {
+    const cycle = ds.cycles.find((c) => c.id === cycleId);
+    return ds.files.find((f) => f.id === cycle?.fileId)?.printTimeMin ?? 0;
+  };
 
   const usable = cycleYields.filter((c) => c.control.goodParts !== null && c.maintenance.goodParts !== null);
   const plannedCycles = Math.max(Math.ceil(s.goalPerGroup / PLATES_PER_CYCLE), usable.length, 1);
@@ -330,7 +350,7 @@ function computeEconomics(
 
   const partCost = (part?: string) => (part ? s.partCosts[part] ?? 0 : 0);
 
-  type CycleTerms = { good: number; scrapG: number; reactiveMin: number; partsCost: number; pmMin: number; calibMin: number };
+  type CycleTerms = { good: number; scrapG: number; reactiveMin: number; lostMin: number; partsCost: number; pmMin: number; calibMin: number };
   const perCycle: CycleTerms[] = usable.map((c) => {
     const scale = (y: GroupCycleYield) => (y.platesStarted > 0 ? PLATES_PER_CYCLE / y.platesStarted : 0);
     const sC = scale(c.control);
@@ -339,10 +359,12 @@ function computeEconomics(
     const sum = <T,>(xs: T[], f: (x: T) => number) => xs.reduce((a, x) => a + f(x), 0);
     const reactiveIn = (g: Group) => ds.reactive.filter((r) => !r.voided && r.cycleId === c.cycleId && groupOf(r.printerId) === g);
     const mRuns = inCycle('maintenance');
+    const printMin = printTimeOf(c.cycleId);
     return {
       good: c.maintenance.goodParts! * sM - c.control.goodParts! * sC,
       scrapG: sum(inCycle('control'), (r) => r.scrapMassG ?? 0) * sC - sum(mRuns, (r) => r.scrapMassG ?? 0) * sM,
-      reactiveMin: sum(reactiveIn('control'), (r) => r.minutes) * sC - sum(reactiveIn('maintenance'), (r) => r.minutes) * sM,
+      reactiveMin: sum(reactiveIn('control'), (r) => repairMinutes(r, s)) * sC - sum(reactiveIn('maintenance'), (r) => repairMinutes(r, s)) * sM,
+      lostMin: sum(inCycle('control'), (r) => lostPrintMinutes(r, printMin)) * sC - sum(mRuns, (r) => lostPrintMinutes(r, printMin)) * sM,
       partsCost: sum(reactiveIn('control'), (r) => partCost(r.part)) * sC - sum(reactiveIn('maintenance'), (r) => partCost(r.part)) * sM,
       pmMin:
         sum(ds.pmTime.filter((t) => !t.voided && t.scope === 'per_print' && t.cycleId === c.cycleId), (t) => t.minutes) * sM +
@@ -361,6 +383,7 @@ function computeEconomics(
     { label: 'Scrap filament saved', units: 'g', perCycle: avg((t) => t.scrapG), dollarsPerCycle: dollars(s.filamentCostPerKg, (v) => (avg((t) => t.scrapG) / 1000) * v) },
     { label: 'Repair labor saved', units: 'min', perCycle: avg((t) => t.reactiveMin), dollarsPerCycle: dollars(labor, (v) => (avg((t) => t.reactiveMin) / 60) * v) },
     { label: 'Replacement parts saved', units: '$', perCycle: avg((t) => t.partsCost), dollarsPerCycle: avg((t) => t.partsCost) },
+    { label: 'Printer time wasted on failed plates saved', units: 'min', perCycle: avg((t) => t.lostMin), dollarsPerCycle: dollars(machine, (v) => (avg((t) => t.lostMin) / 60) * v) },
     { label: 'Downtime saved', units: 'h', perCycle: downtimeSavedPerCycle, dollarsPerCycle: dollars(machine, (v) => downtimeSavedPerCycle * v) },
     { label: 'PM labor (one-time spread over test + per print)', units: 'min', perCycle: -avg((t) => t.pmMin), dollarsPerCycle: dollars(labor, (v) => (-avg((t) => t.pmMin) / 60) * v) },
     { label: 'Calibration machine time', units: 'min', perCycle: -avg((t) => t.calibMin), dollarsPerCycle: dollars(machine, (v) => (-avg((t) => t.calibMin) / 60) * v) },
@@ -373,6 +396,7 @@ function computeEconomics(
         t.good * s.valuePerGoodPart! +
         (t.scrapG / 1000) * (s.filamentCostPerKg ?? 0) +
         (t.reactiveMin / 60) * labor +
+        (t.lostMin / 60) * (machine ?? 0) +
         t.partsCost +
         downtimeSavedPerCycle * (machine ?? 0) -
         (t.pmMin / 60) * labor -

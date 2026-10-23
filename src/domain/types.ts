@@ -51,6 +51,7 @@ export interface FileSpec extends BaseRecord {
   unitWeightG: number;
   sampleCount?: number;
   sampleWeightG?: number;
+  printTimeMin?: number; // full plate print time, from the slicer
 }
 
 export interface Cycle extends BaseRecord {
@@ -130,6 +131,7 @@ export interface ErrorCode extends BaseRecord {
   cycleId: string;
   code: string;
   disposition: ErrorDisposition;
+  progressPct?: number; // print progress when the error happened
   note?: string;
 }
 
@@ -160,7 +162,9 @@ export interface ReactiveMaintenance extends BaseRecord {
   cycleId?: string;
   action: ReactiveAction;
   part?: string;
-  minutes: number;
+  progressPct?: number; // print progress when the repair happened
+  /** Legacy: repairs are no longer timed; labor comes from Settings.repairMinutes per action. */
+  minutes?: number;
   note?: string;
 }
 
@@ -239,6 +243,8 @@ export interface Settings {
   filamentCostPerKg?: number;
   machineHourValue?: number;
   partCosts: Record<string, number>;
+  /** Typical minutes for each kind of repair, from existing shop data. */
+  repairMinutes: Partial<Record<ReactiveAction, number>>;
   lastBackupAt?: string;
 }
 
@@ -257,7 +263,14 @@ export const DEFAULT_SETTINGS: Settings = {
   missingTolerancePct: 2,
   passFailRuleText: DEFAULT_PASS_FAIL_RULE,
   partCosts: {},
+  repairMinutes: {},
 };
+
+/** The per-print PM steps aren't ticked off: they're implied for Maintenance printers and never done on Control. */
+export function impliedChecks(group: Group): PrePrintChecks {
+  const done = group === 'maintenance';
+  return { purgeCleared: done, nozzleWiped: done, plateCleaned: done, calibrationRun: done };
+}
 
 /** Everything the analysis needs, already loaded from storage. Photos are excluded. */
 export interface Dataset {

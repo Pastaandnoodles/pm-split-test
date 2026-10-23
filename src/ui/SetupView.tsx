@@ -1,8 +1,18 @@
 import { useState } from 'react';
-import { ONE_TIME_STEPS, ONE_TIME_STEP_LABELS, DEFAULT_PASS_FAIL_RULE, type Dataset, type Group, type OneTimeStepKey, type Printer } from '../domain/types';
+import {
+  ONE_TIME_STEPS,
+  ONE_TIME_STEP_LABELS,
+  DEFAULT_PASS_FAIL_RULE,
+  REACTIVE_ACTIONS,
+  REACTIVE_ACTION_LABELS,
+  type Dataset,
+  type Group,
+  type OneTimeStepKey,
+  type Printer,
+} from '../domain/types';
 import { GROUP_SHORT, SHELVES, defaultGroup } from '../domain/printers';
-import { createRecord, saveSettings, voidRecord } from '../db/db';
-import { FileForm } from './CyclesView';
+import { createRecord, saveSettings, updateRecord, voidRecord } from '../db/db';
+import { FileForm, PrintTimeFields, fmtPrintTime } from './CyclesView';
 import { CommitNumberField, ConfirmButton, NumberField, TextField } from './common';
 import { PmTimeLog } from './PmTimeLog';
 
@@ -13,6 +23,7 @@ export function SetupView({ ds }: { ds: Dataset }) {
       <OneTimeCard ds={ds} />
       <FilesCard ds={ds} />
       <ValuesCard ds={ds} />
+      <RepairTimesCard ds={ds} />
       <PartCostsCard ds={ds} />
       <RuleCard ds={ds} />
     </div>
@@ -187,6 +198,51 @@ function OneTimeCard({ ds }: { ds: Dataset }) {
   );
 }
 
+function PrintTimeEditor({ fileId, value }: { fileId: string; value?: number }) {
+  const [open, setOpen] = useState(false);
+  const [hours, setHours] = useState<number | undefined>(value === undefined ? undefined : Math.floor(value / 60));
+  const [mins, setMins] = useState<number | undefined>(value === undefined ? undefined : value % 60);
+  if (!open)
+    return (
+      <button className="btn small" onClick={() => setOpen(true)}>
+        {value === undefined ? 'Set print time' : 'Edit print time'}
+      </button>
+    );
+  const total = (hours ?? 0) * 60 + (mins ?? 0);
+  return (
+    <div className="row">
+      <PrintTimeFields hours={hours} minutes={mins} onHours={setHours} onMinutes={setMins} />
+      <button
+        className="btn small primary"
+        disabled={total <= 0}
+        onClick={async () => {
+          await updateRecord('files', fileId, { printTimeMin: total });
+          setOpen(false);
+        }}
+      >
+        Save
+      </button>
+    </div>
+  );
+}
+
+function RepairTimesCard({ ds }: { ds: Dataset }) {
+  const times = ds.settings.repairMinutes;
+  return (
+    <div className="card stack">
+      <h2>Typical repair times</h2>
+      <p className="secondary small" style={{ margin: 0 }}>
+        Repairs aren't timed one by one. Enter how long each kind of repair usually takes, from your existing shop data. The app uses these to work out repair labor.
+      </p>
+      <div className="grid-3">
+        {REACTIVE_ACTIONS.map((a) => (
+          <CommitNumberField key={a} label={REACTIVE_ACTION_LABELS[a]} suffix="min" value={times[a]} min={0} onCommit={(v) => saveSettings({ repairMinutes: { ...times, [a]: v } })} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function FilesCard({ ds }: { ds: Dataset }) {
   const [adding, setAdding] = useState(false);
   return (
@@ -206,8 +262,10 @@ function FilesCard({ ds }: { ds: Dataset }) {
           <strong>{f.name}</strong>
           <span className="secondary num">
             {f.partsPerPlate} per plate · {f.unitWeightG.toFixed(3)} g each
-            {f.sampleCount ? ` (from ${f.sampleCount} weighing ${f.sampleWeightG} g)` : ''}
+            {f.sampleCount ? ` (from ${f.sampleCount} weighing ${f.sampleWeightG} g)` : ''} · {fmtPrintTime(f.printTimeMin)}
           </span>
+          <span className="spacer" />
+          <PrintTimeEditor fileId={f.id} value={f.printTimeMin} />
         </div>
       ))}
       {adding && <FileForm onSaved={() => setAdding(false)} onCancel={() => setAdding(false)} />}

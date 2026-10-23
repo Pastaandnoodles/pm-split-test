@@ -45,7 +45,7 @@ All test data is captured through this app. The paper error-code sheets on each 
 
 - The one-time order is fixed: fans → debris → lead screws → nozzle tip. The app enforces the order in a per-printer done checklist (one tap, or "Mark all ready").
 - **Time is logged for the whole group, never per printer** (timing each printer takes too long). One-time steps: total minutes per step for the whole group (Setup tab). Per-print steps: total minutes for the whole Maintenance group per cycle (Cycles tab). The app derives the average per printer (step total ÷ printers done) and per plate (per-print total ÷ Maintenance plates).
-- Per-print steps are logged as checkboxes on each plate run (no time on the plate).
+- Per-print steps are **not ticked off**: they're implied done on every Maintenance plate and never done on Control (`impliedChecks(group)` fills `PlateRun.checks`). A skipped step is logged by hand as a `missed_step` deviation.
 - Control: no process changes, reactive maintenance only.
 
 ### Plate pools
@@ -62,12 +62,13 @@ All test data is captured through this app. The paper error-code sheets on each 
 |---|---|
 | `Printer` | id, column, row (top/bottom), shelf, group, one-time PM steps (done, timestamp) |
 | `PmTime` | group-level PM minutes: `one_time` (per step) or `per_print` (per cycle); entries are summed |
-| `File` | name, parts_per_plate, unit_weight_g |
+| `File` | name, parts_per_plate, unit_weight_g, print_time_min (full plate, from the slicer) |
 | `Cycle` | number, file_id, started_at, ended_at, bin tare weight, notes |
 | `PlateRun` (printer × cycle) | outcome `pass` / `fail_finished` / `fail_stopped` (see Pass/fail rule); `stopped_by` `printer` / `canceled` (for `fail_stopped`); pre-print checks (purge cleared, nozzle wiped, plate cleaned, calibration run); correct_plate_pool; cancel reason |
-| Failure fields (on `PlateRun` when it isn't a pass) | `failureType` from fixed list, **required photo** (`photoId` → `photos` table), note, `fatalErrorId`, **`progressPct`** (from printer screen, `fail_stopped` only), **`scrapMassG`** |
-| `ErrorCode` | printer, cycle, HMS code (e.g. `0300-0100-0001-0007`), `resumed` or `fatal`, note |
-| `ReactiveMaintenance` (both groups) | printer, cycle, action, part replaced (optional), minutes |
+| Failure fields (on `PlateRun` when it isn't a pass) | `failureType` from fixed list, note, `fatalErrorId`, **`progressPct`** (from printer screen, `fail_stopped` only), **`scrapMassG`** |
+| Photo (any plate outcome) | optional, its own section on the plate form (`photoId` → `photos` table) |
+| `ErrorCode` | printer, cycle, HMS code (e.g. `0300-0100-0001-0007`), `resumed` or `fatal`, print progress % when it happened, note |
+| `ReactiveMaintenance` (both groups) | printer, cycle, action, part replaced (optional), print progress % when it happened. **Not timed**: labor = typical minutes per action (`Settings.repairMinutes`, from existing shop data) |
 | `Downtime` | printer, down_at, up_at, reason |
 | `BinWeight` | cycle, group, bin kind `good` (sold) / `seconds` (donated, not sold) / `scrap` (unredeemable, recycled), gross weight; tare is on the cycle |
 | `Deviation` | type, printer/cycle (optional), description, include/exclude flag for analysis |
@@ -117,7 +118,8 @@ A win means the PM routine **makes more money than it costs**. Only the formula 
 ```
 gain = (good_parts_M − good_parts_C) × value_per_good_part         (normalized per 38 plates)
      + (scrap_g_C − scrap_g_M) × filament_cost_per_g
-     + (reactive_minutes_C − reactive_minutes_M) × labor_rate
+     + (reactive_minutes_C − reactive_minutes_M) × labor_rate          (repairs × typical minutes per action)
+     + (wasted_print_min_C − wasted_print_min_M) × machine_hour_value  (fail_finished = full print time; fail_stopped = progress % × print time)
      + (parts_cost_C − parts_cost_M)
      + (downtime_hours_C − downtime_hours_M) × machine_hour_value
 cost = (one_time_PM_minutes + per_print_PM_minutes) × labor_rate
@@ -128,7 +130,8 @@ Control has no PM minutes by definition. Its labor shows up through reactive mai
 
 ## Setup values (entered in the app)
 
-- Per file: name, parts per plate, unit weight (from the sample weighing).
+- Per file: name, parts per plate, unit weight (from the sample weighing), print time (hours + minutes).
+- Typical repair minutes for each reactive action.
 - Calibration machine minutes per print.
 - Dollars: labor rate ($/hr), value per good wigglitz, filament cost ($/kg), machine-hour value, and a cost per replacement part type.
 - Missing-parts tolerance (default 2%).
@@ -137,7 +140,7 @@ Control has no PM minutes by definition. Its labor shows up through reactive mai
 ## UI
 
 - **Main screen: shelf map grid.** 38 columns × 2 rows that mirror the real layout, with shelf dividers every 2 columns and groups color-coded (also shown with a pattern or letter, so color isn't the only cue). Each tile shows the current cycle's status: pending / pass / fail / cancel, plus badges for error codes and reactive maintenance.
-- Tapping a printer opens a sheet with: outcome, pre-print checklist, error-code transcription, failure (camera), reactive maintenance, and deviation.
+- Tapping a printer opens a sheet with, in order: plate (pool check, outcome, failure details, optional photo), error codes, reactive maintenance, deviations, history, and **printer down at the bottom** (it's rare). While a printer is down, its "Mark back up" banner moves to the top.
 - Other tabs: **Setup** (printers, groups, files, one-time PM checklist), **Cycles** (start/close a cycle, bin weights), **Analysis**, **Data** (export/backup/restore, audit log).
 - iPad-first: large touch targets (≥ 48px), usable with gloves, landscape and portrait, minimal typing. Show a progress bar toward 532 per group at all times.
 

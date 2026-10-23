@@ -44,7 +44,7 @@ function StartCycle({ ds }: { ds: Dataset }) {
             <option value="">Choose…</option>
             {ds.files.map((f) => (
               <option key={f.id} value={f.id}>
-                {f.name} · {f.partsPerPlate}/plate · {f.unitWeightG.toFixed(3)} g each
+                {f.name} · {f.partsPerPlate}/plate · {f.unitWeightG.toFixed(3)} g each · {fmtPrintTime(f.printTimeMin)}
               </option>
             ))}
           </select>
@@ -71,19 +71,44 @@ function StartCycle({ ds }: { ds: Dataset }) {
   );
 }
 
+/** Print time as hours + minutes, the way the slicer and printer screen show it. */
+export function PrintTimeFields({ hours, minutes, onHours, onMinutes }: { hours?: number; minutes?: number; onHours: (v?: number) => void; onMinutes: (v?: number) => void }) {
+  return (
+    <div className="row" style={{ alignItems: 'flex-end' }}>
+      <div style={{ flex: 1, minWidth: 100 }}>
+        <NumberField label="Print time" suffix="hours" value={hours} onChange={onHours} step="1" min={0} />
+      </div>
+      <div style={{ flex: 1, minWidth: 100 }}>
+        <NumberField label="and" suffix="minutes" value={minutes} onChange={onMinutes} step="1" min={0} max={59} />
+      </div>
+    </div>
+  );
+}
+
+export function fmtPrintTime(min?: number): string {
+  if (min === undefined) return 'print time not set';
+  const h = Math.floor(min / 60);
+  const m = Math.round(min % 60);
+  return h ? `${h} h ${m} min` : `${m} min`;
+}
+
 export function FileForm({ onSaved, onCancel }: { onSaved?: (id: string) => void; onCancel?: () => void }) {
   const [name, setName] = useState('');
   const [ppp, setPpp] = useState<number>();
   const [sampleCount, setSampleCount] = useState<number | undefined>(20);
   const [sampleWeight, setSampleWeight] = useState<number>();
+  const [hours, setHours] = useState<number>();
+  const [mins, setMins] = useState<number>();
   const unit = sampleCount && sampleWeight ? sampleWeight / sampleCount : undefined;
-  const ok = name.trim() && ppp && ppp > 0 && unit && unit > 0;
+  const printTimeMin = hours === undefined && mins === undefined ? undefined : (hours ?? 0) * 60 + (mins ?? 0);
+  const ok = name.trim() && ppp && ppp > 0 && unit && unit > 0 && printTimeMin && printTimeMin > 0;
   return (
     <div className="card stack" style={{ background: 'var(--page)' }}>
       <h3>New print file</h3>
       <div className="grid-2">
         <TextField label="File name" value={name} onChange={setName} />
         <NumberField label="Wigglitz per plate" value={ppp} onChange={setPpp} step="1" min={1} />
+        <PrintTimeFields hours={hours} minutes={mins} onHours={setHours} onMinutes={setMins} />
       </div>
       <p className="secondary small" style={{ margin: 0 }}>
         <strong>Sample weighing:</strong> count out some good wigglitz from this file (20 is plenty), put them on the scale together, and enter the count and the total weight.
@@ -99,11 +124,13 @@ export function FileForm({ onSaved, onCancel }: { onSaved?: (id: string) => void
           className="btn primary"
           disabled={!ok}
           onClick={async () => {
-            const id = await createRecord('files', { name: name.trim(), partsPerPlate: ppp!, unitWeightG: unit!, sampleCount, sampleWeightG: sampleWeight });
+            const id = await createRecord('files', { name: name.trim(), partsPerPlate: ppp!, unitWeightG: unit!, sampleCount, sampleWeightG: sampleWeight, printTimeMin });
             onSaved?.(id);
             setName('');
             setPpp(undefined);
             setSampleWeight(undefined);
+            setHours(undefined);
+            setMins(undefined);
           }}
         >
           Save file
@@ -134,7 +161,7 @@ function CycleCard({ ds, cycle, isOpen }: { ds: Dataset; cycle: Cycle; isOpen?: 
         <h2>Cycle {cycle.number}</h2>
         {isOpen ? <span className="pill warn">Open</span> : <span className="pill">Closed</span>}
         <span className="secondary small">
-          {file?.name ?? 'No file'} · started {fmtTime(cycle.startedAt)}
+          {file?.name ?? 'No file'} ({fmtPrintTime(file?.printTimeMin)}) · started {fmtTime(cycle.startedAt)}
           {cycle.endedAt ? ` · closed ${fmtTime(cycle.endedAt)}` : ''}
         </span>
         <span className="spacer" />

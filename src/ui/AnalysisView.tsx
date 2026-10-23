@@ -107,6 +107,7 @@ function OutcomeTiles({ r }: { r: AnalysisResult }) {
           <div className="sub">
             {r.scrap[g].stoppedCount} stopped plates · avg progress {r.scrap[g].meanProgressPct === null ? '–' : `${r.scrap[g].meanProgressPct.toFixed(0)}%`}
           </div>
+          <div className="sub">≈ {fmtNum(r.scrap[g].lostPrintHours, 1)} h of printer time spent on failed plates</div>
         </div>
       ))}
     </div>
@@ -268,7 +269,7 @@ function RepairsCard({ r }: { r: AnalysisResult }) {
               <GroupTag group={g} />
             </div>
             <div className="value">{r.reactive[g].count} repairs</div>
-            <div className="sub">{fmtNum(r.reactive[g].minutes)} minutes</div>
+            <div className="sub">≈ {fmtNum(r.reactive[g].minutes)} minutes (from typical repair times)</div>
           </div>
         ))}
         <div className="stat">

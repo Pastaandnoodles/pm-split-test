@@ -20,8 +20,8 @@ export async function loadDemo(): Promise<void> {
   const iso = (ms: number) => new Date(ms).toISOString();
   const rec = (ms: number): BaseRecord => ({ id: crypto.randomUUID(), createdAt: iso(ms), updatedAt: iso(ms) });
 
-  await db.settings.put({ ...DEFAULT_SETTINGS, testLocked: true, laborRatePerHr: 22, valuePerGoodPart: 0.4, filamentCostPerKg: 20, machineHourValue: 1.5, calibrationMachineMinutes: 4, partCosts: { Nozzle: 18, Fan: 9 } });
-  const file = { ...rec(t0), name: 'DEMO wigglitz v1', partsPerPlate: 100, unitWeightG: 3.2, sampleCount: 20, sampleWeightG: 64 };
+  await db.settings.put({ ...DEFAULT_SETTINGS, testLocked: true, laborRatePerHr: 22, valuePerGoodPart: 0.4, filamentCostPerKg: 20, machineHourValue: 1.5, calibrationMachineMinutes: 4, partCosts: { Nozzle: 18, Fan: 9 }, repairMinutes: { clear_clog: 15, replace_nozzle: 20, replace_fan: 15, ptfe: 10, clean_plate: 5, ams_fix: 15, motion_fix: 30, other: 15 } });
+  const file = { ...rec(t0), name: 'DEMO wigglitz v1', partsPerPlate: 100, unitWeightG: 3.2, sampleCount: 20, sampleWeightG: 64, printTimeMin: 330 };
   await db.files.add(file);
 
   for (const p of printers.filter((x) => x.group === 'maintenance')) {
@@ -66,10 +66,10 @@ export async function loadDemo(): Promise<void> {
       }
       await db.plateRuns.add(run);
       if (rand() < (isM ? 0.08 : 0.15)) {
-        await db.errorCodes.add({ ...rec(start), printerId: p.id, cycleId: cycle.id, code: rand() < 0.5 ? '0300-0100-0001-0007' : '0700-2000-0002-0001', disposition: run.outcome === 'pass' ? 'resumed' : 'fatal' });
+        await db.errorCodes.add({ ...rec(start), printerId: p.id, cycleId: cycle.id, code: rand() < 0.5 ? '0300-0100-0001-0007' : '0700-2000-0002-0001', disposition: run.outcome === 'pass' ? 'resumed' : 'fatal', progressPct: run.outcome === 'fail_stopped' ? run.progressPct : Math.round(rand() * 100) });
       }
       if (rand() < (isM ? 0.03 : 0.08)) {
-        await db.reactive.add({ ...rec(start), printerId: p.id, cycleId: cycle.id, action: 'clear_clog', part: rand() < 0.3 ? 'Nozzle' : undefined, minutes: Math.round(10 + rand() * 20) });
+        await db.reactive.add({ ...rec(start), printerId: p.id, cycleId: cycle.id, action: 'clear_clog', part: rand() < 0.3 ? 'Nozzle' : undefined, progressPct: Math.round(rand() * 100) });
       }
     }
     const weigh = (parts: number, noise: number) => Math.round((850 + parts * 3.2 + (rand() - 0.5) * noise) * 10) / 10;
