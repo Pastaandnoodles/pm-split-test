@@ -2,8 +2,6 @@ import { useState } from 'react';
 import {
   ONE_TIME_STEPS,
   ONE_TIME_STEP_LABELS,
-  REACTIVE_ACTIONS,
-  REACTIVE_ACTION_LABELS,
   type Dataset,
   type Group,
   type OneTimeStepKey,
@@ -12,7 +10,7 @@ import {
 import { GROUP_SHORT, SHELVES, defaultGroup } from '../domain/printers';
 import { createRecord, saveSettings, updateRecord, voidRecord } from '../db/db';
 import { FileForm, PrintTimeFields, fmtPrintTime } from './CyclesView';
-import { CommitNumberField, ConfirmButton, NumberField, TextField } from './common';
+import { CommitNumberField, ConfirmButton } from './common';
 import { PmTimeLog } from './PmTimeLog';
 
 export function SetupView({ ds }: { ds: Dataset }) {
@@ -22,8 +20,6 @@ export function SetupView({ ds }: { ds: Dataset }) {
       <OneTimeCard ds={ds} />
       <FilesCard ds={ds} />
       <ValuesCard ds={ds} />
-      <RepairTimesCard ds={ds} />
-      <PartCostsCard ds={ds} />
     </div>
   );
 }
@@ -224,23 +220,6 @@ function PrintTimeEditor({ fileId, value }: { fileId: string; value?: number }) 
   );
 }
 
-function RepairTimesCard({ ds }: { ds: Dataset }) {
-  const times = ds.settings.repairMinutes;
-  return (
-    <div className="card stack">
-      <h2>Typical repair times</h2>
-      <p className="secondary small" style={{ margin: 0 }}>
-        Repairs aren't timed one by one. Enter how long each kind of repair usually takes, from your existing shop data. The app uses these to work out repair labor.
-      </p>
-      <div className="grid-3">
-        {REACTIVE_ACTIONS.map((a) => (
-          <CommitNumberField key={a} label={REACTIVE_ACTION_LABELS[a]} suffix="min" value={times[a]} min={0} onCommit={(v) => saveSettings({ repairMinutes: { ...times, [a]: v } })} />
-        ))}
-      </div>
-    </div>
-  );
-}
-
 function FilesCard({ ds }: { ds: Dataset }) {
   const [adding, setAdding] = useState(false);
   return (
@@ -290,51 +269,6 @@ function ValuesCard({ ds }: { ds: Dataset }) {
         <CommitNumberField label="Value per good wigglitz" suffix="$" value={s.valuePerGoodPart} onCommit={(v) => saveSettings({ valuePerGoodPart: v })} min={0} />
         <CommitNumberField label="Filament cost" suffix="$/kg" value={s.filamentCostPerKg} onCommit={(v) => saveSettings({ filamentCostPerKg: v })} min={0} />
         <CommitNumberField label="Machine-hour value" suffix="$/hr" value={s.machineHourValue} onCommit={(v) => saveSettings({ machineHourValue: v })} min={0} />
-      </div>
-    </div>
-  );
-}
-
-function PartCostsCard({ ds }: { ds: Dataset }) {
-  const [name, setName] = useState('');
-  const [cost, setCost] = useState<number>();
-  const costs = ds.settings.partCosts;
-  const used = [...new Set(ds.reactive.map((r) => r.part).filter((p): p is string => !!p && !(p in costs)))];
-  return (
-    <div className="card stack">
-      <h2>Replacement part costs</h2>
-      {Object.entries(costs).map(([part, c]) => (
-        <div key={part} className="list-item">
-          <strong>{part}</strong>
-          <span className="secondary num">${c.toFixed(2)}</span>
-          <span className="spacer" />
-          <ConfirmButton
-            onConfirm={() => {
-              const next = { ...costs };
-              delete next[part];
-              void saveSettings({ partCosts: next });
-            }}
-          >
-            Remove
-          </ConfirmButton>
-        </div>
-      ))}
-      {used.length > 0 && <div className="small secondary">Parts logged without a cost: {used.join(', ')}</div>}
-      <div className="grid-3">
-        <TextField label="Part name" value={name} onChange={setName} />
-        <NumberField label="Cost" suffix="$" value={cost} onChange={setCost} min={0} />
-        <button
-          className="btn"
-          style={{ alignSelf: 'flex-end' }}
-          disabled={!name.trim() || cost === undefined}
-          onClick={async () => {
-            await saveSettings({ partCosts: { ...costs, [name.trim()]: cost! } });
-            setName('');
-            setCost(undefined);
-          }}
-        >
-          Save part cost
-        </button>
       </div>
     </div>
   );

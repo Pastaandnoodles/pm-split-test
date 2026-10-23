@@ -68,7 +68,7 @@ All test data is captured through this app. The paper error-code sheets on each 
 | Failure fields (on `PlateRun` when it isn't a pass) | `failureType` from fixed list, note, `fatalErrorId`, **`progressPct`** (from printer screen, `fail_stopped` only), **`scrapMassG`** |
 | Photo (any plate outcome) | optional, its own section on the plate form (`photoId` → `photos` table) |
 | `ErrorCode` | printer, cycle, HMS code (e.g. `0300-0100-0001-0007`), `resumed` or `fatal`, print progress % when it happened, note |
-| `ReactiveMaintenance` (both groups) | printer, cycle, action, part replaced (optional), print progress % when it happened. **Not timed**: labor = typical minutes per action (`Settings.repairMinutes`, from existing shop data) |
+| `ReactiveMaintenance` (both groups) | printer, cycle, action, part replaced (optional), print progress % when it happened. **Counts only.** Repair time and part costs are outside this test (existing shop data covers them), so they are not entered or valued |
 | `Downtime` | printer, down_at, up_at, reason |
 | `BinWeight` | cycle, group, bin kind `good` (sold) / `seconds` (donated, not sold) / `scrap` (unredeemable, recycled), gross weight; tare is on the cycle |
 | `Deviation` | type, printer/cycle (optional), description, include/exclude flag for analysis |
@@ -118,22 +118,19 @@ A win means the PM routine **makes more money than it costs**. Only the formula 
 ```
 gain = (good_parts_M − good_parts_C) × value_per_good_part         (normalized per 38 plates)
      + (scrap_g_C − scrap_g_M) × filament_cost_per_g
-     + (reactive_minutes_C − reactive_minutes_M) × labor_rate          (repairs × typical minutes per action)
      + (wasted_print_min_C − wasted_print_min_M) × machine_hour_value  (fail_finished = full print time; fail_stopped = progress % × print time)
-     + (parts_cost_C − parts_cost_M)
      + (downtime_hours_C − downtime_hours_M) × machine_hour_value
 cost = (one_time_PM_minutes + per_print_PM_minutes) × labor_rate
      + calibration_machine_minutes × machine_hour_value
 net  = gain − cost                       → win if net > 0 (with its confidence range)
 ```
-Control has no PM minutes by definition. Its labor shows up through reactive maintenance. Normal handling (pulling plates, starting prints) is the same for both groups and cancels out.
+Control has no PM minutes by definition. Repair labor and replacement-part costs are **not** in the formula: this test isn't measuring them, and existing shop data covers them. Normal handling (pulling plates, starting prints) is the same for both groups and cancels out.
 
 ## Setup values (entered in the app)
 
 - Per file: name, parts per plate, unit weight (from the sample weighing), print time (hours + minutes).
-- Typical repair minutes for each reactive action.
 - Calibration machine minutes per print.
-- Dollars: labor rate ($/hr), value per good wigglitz, filament cost ($/kg), machine-hour value, and a cost per replacement part type.
+- Dollars: labor rate ($/hr), value per good wigglitz, filament cost ($/kg), machine-hour value.
 - Missing-parts tolerance (default 2%).
 - The pass/fail rule is enforced by training and isn't shown in the app (the outcome buttons carry the three outcomes).
 

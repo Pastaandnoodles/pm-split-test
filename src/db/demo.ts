@@ -20,7 +20,7 @@ export async function loadDemo(): Promise<void> {
   const iso = (ms: number) => new Date(ms).toISOString();
   const rec = (ms: number): BaseRecord => ({ id: crypto.randomUUID(), createdAt: iso(ms), updatedAt: iso(ms) });
 
-  await db.settings.put({ ...DEFAULT_SETTINGS, testLocked: true, laborRatePerHr: 22, valuePerGoodPart: 0.4, filamentCostPerKg: 20, machineHourValue: 1.5, calibrationMachineMinutes: 4, partCosts: { Nozzle: 18, Fan: 9 }, repairMinutes: { clear_clog: 15, replace_nozzle: 20, replace_fan: 15, ptfe: 10, clean_plate: 5, ams_fix: 15, motion_fix: 30, other: 15 } });
+  await db.settings.put({ ...DEFAULT_SETTINGS, testLocked: true, laborRatePerHr: 22, valuePerGoodPart: 0.4, filamentCostPerKg: 20, machineHourValue: 1.5, calibrationMachineMinutes: 4 });
   const file = { ...rec(t0), name: 'DEMO wigglitz v1', partsPerPlate: 100, unitWeightG: 3.2, sampleCount: 20, sampleWeightG: 64, printTimeMin: 330 };
   await db.files.add(file);
 

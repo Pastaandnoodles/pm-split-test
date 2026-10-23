@@ -372,7 +372,7 @@ function ReactiveCard({ ds, printerId, cycleId }: { ds: Dataset; printerId: stri
   const [part, setPart] = useState('');
   const [progress, setProgress] = useState<number>();
   const list = ds.reactive.filter((r) => r.printerId === printerId && (cycleId ? r.cycleId === cycleId : !r.cycleId));
-  const knownParts = [...new Set([...Object.keys(ds.settings.partCosts), ...ds.reactive.map((r) => r.part).filter((p): p is string => !!p)])].sort();
+  const knownParts = [...new Set(ds.reactive.map((r) => r.part).filter((p): p is string => !!p))].sort();
   return (
     <div className="card stack">
       <h3>Reactive maintenance{cycleId ? ' this cycle' : ''}</h3>

@@ -163,7 +163,7 @@ export interface ReactiveMaintenance extends BaseRecord {
   action: ReactiveAction;
   part?: string;
   progressPct?: number; // print progress when the repair happened
-  /** Legacy: repairs are no longer timed; labor comes from Settings.repairMinutes per action. */
+  /** Legacy: early records were timed. Repair time and part cost are outside this test. */
   minutes?: number;
   note?: string;
 }
@@ -242,9 +242,6 @@ export interface Settings {
   valuePerGoodPart?: number;
   filamentCostPerKg?: number;
   machineHourValue?: number;
-  partCosts: Record<string, number>;
-  /** Typical minutes for each kind of repair, from existing shop data. */
-  repairMinutes: Partial<Record<ReactiveAction, number>>;
   lastBackupAt?: string;
 }
 
@@ -262,8 +259,6 @@ export const DEFAULT_SETTINGS: Settings = {
   calibrationMachineMinutes: 0,
   missingTolerancePct: 2,
   passFailRuleText: DEFAULT_PASS_FAIL_RULE,
-  partCosts: {},
-  repairMinutes: {},
 };
 
 /** The per-print PM steps aren't ticked off: they're implied for Maintenance printers and never done on Control. */

@@ -331,7 +331,6 @@ function RepairsCard({ r }: { r: AnalysisResult }) {
               <GroupTag group={g} />
             </div>
             <div className="value">{r.reactive[g].count} repairs</div>
-            <div className="sub">≈ {fmtNum(r.reactive[g].minutes)} minutes (from typical repair times)</div>
           </div>
         ))}
         <div className="stat">
@@ -518,7 +517,6 @@ function PrinterTable({ r }: { r: AnalysisResult }) {
               <th className="r">Resumed</th>
               <th className="r">Fatal</th>
               <th className="r">Repairs</th>
-              <th className="r">Repair min</th>
               <th className="r">Down h</th>
             </tr>
           </thead>
@@ -536,7 +534,6 @@ function PrinterTable({ r }: { r: AnalysisResult }) {
                 <td className="r">{p.resumed}</td>
                 <td className="r">{p.fatal}</td>
                 <td className="r">{p.reactiveCount}</td>
-                <td className="r">{p.reactiveMinutes}</td>
                 <td className="r">{fmtNum(p.downtimeHours, 1)}</td>
               </tr>
             ))}

@@ -2,7 +2,7 @@
 import { buildPrinters, defaultGroup, parsePrinterId, printerId, shelfOf } from './printers';
 import { computeGroupCycleYield, crossBinHint, partsFromWeight } from './yield';
 import { comparePaired, compareUnits, wilson } from './stats';
-import { analyze, buildVerdict, lostPrintMinutes, repairMinutes, scrapToParts, yieldShare } from './analysis';
+import { analyze, buildVerdict, lostPrintMinutes, scrapToParts, yieldShare } from './analysis';
 import { missingCycleData } from './completeness';
 import { DEFAULT_SETTINGS, type BinWeight, type Cycle, type Dataset, type FileSpec, type PlateRun, type PmTime } from './types';
 
@@ -185,16 +185,11 @@ describe('analysis', () => {
     expect(withEx.progress.control).toBe(without.progress.control);
   });
 
-  it('values wasted printer time and repairs without per-event timing', () => {
+  it('values wasted printer time on failed plates', () => {
     const r = (outcome: PlateRun['outcome'], progressPct?: number) => run('x', 'H-01a', 'c1', outcome, { progressPct });
     expect(lostPrintMinutes(r('pass'), 300)).toBe(0);
     expect(lostPrintMinutes(r('fail_finished'), 300)).toBe(300);
     expect(lostPrintMinutes(r('fail_stopped', 40), 300)).toBe(120);
-    const settings = { ...DEFAULT_SETTINGS, repairMinutes: { clear_clog: 15 } };
-    const repair = { ...base('m'), printerId: 'H-01a', action: 'clear_clog' as const };
-    expect(repairMinutes(repair, settings)).toBe(15);
-    expect(repairMinutes({ ...repair, action: 'replace_fan' }, settings)).toBe(0);
-    expect(repairMinutes({ ...repair, minutes: 40 }, settings)).toBe(40);
   });
 
   it('splits expected parts into good, seconds, scrap and missing shares', () => {
