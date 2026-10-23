@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { BIN_KINDS, BIN_KIND_LABELS, type BinKind, type Cycle, type Dataset, type Group } from '../domain/types';
-import { PmTimeLog } from './PmTimeLog';
+import { PmTimeField } from './PmTimeField';
 import { computeGroupCycleYield, crossBinHint, findBin, type GroupCycleYield } from '../domain/yield';
 import { createRecord, saveSettings, updateRecord } from '../db/db';
 import { openCycle, openDowntime } from '../db/useDataset';
@@ -244,7 +244,7 @@ function CycleCard({ ds, cycle, isOpen }: { ds: Dataset; cycle: Cycle; isOpen?: 
       <div className="stack">
         <h3>Per-print maintenance time (whole Maintenance group)</h3>
         <span className="secondary small">Plate cleaning, calibration and purge clearing for all Maintenance printers this cycle.</span>
-        <PmTimeLog
+        <PmTimeField
           ds={ds}
           scope="per_print"
           cycleId={cycle.id}

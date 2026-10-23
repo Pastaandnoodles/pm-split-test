@@ -61,7 +61,7 @@ All test data is captured through this app. The paper error-code sheets on each 
 | Entity | Key fields |
 |---|---|
 | `Printer` | id, column, row (top/bottom), shelf, group, one-time PM steps (done, timestamp) |
-| `PmTime` | group-level PM minutes: `one_time` (per step) or `per_print` (per cycle); entries are summed |
+| `PmTime` | group-level PM minutes: `one_time` (per step) or `per_print` (per cycle). **One editable total** per step / per cycle: typing a new number replaces it (older multi-entry data is summed, then collapsed on the next save) |
 | `File` | name, parts_per_plate, unit_weight_g, print_time_min (full plate, from the slicer) |
 | `Cycle` | number, file_id, started_at, ended_at, bin tare weight, notes |
 | `PlateRun` (printer × cycle) | outcome `pass` / `fail_finished` / `fail_stopped` (see Pass/fail rule); `stopped_by` `printer` / `canceled` (for `fail_stopped`); pre-print checks (purge cleared, nozzle wiped, plate cleaned, calibration run); correct_plate_pool; cancel reason |

@@ -11,7 +11,7 @@ import { GROUP_SHORT, SHELVES, defaultGroup } from '../domain/printers';
 import { createRecord, saveSettings, updateRecord, voidRecord } from '../db/db';
 import { FileForm, PrintTimeFields, fmtPrintTime } from './CyclesView';
 import { CommitNumberField, ConfirmButton } from './common';
-import { PmTimeLog } from './PmTimeLog';
+import { PmTimeField } from './PmTimeField';
 
 export function SetupView({ ds }: { ds: Dataset }) {
   return (
@@ -118,7 +118,7 @@ function OneTimeCard({ ds }: { ds: Dataset }) {
       </div>
       <p className="secondary small" style={{ margin: 0 }}>
         Maintenance group only, in this order: fans → debris → lead screws → nozzle tip. Tap a cell to mark that printer done (tap a ✓ twice to undo). A step unlocks once the
-        previous one is done. Time isn't logged per printer: enter the total time for each step for the whole group below, and the app works out the average per printer.
+        previous one is done. Time isn't logged per printer: enter one total for each step for the whole group below (type a new number to correct it), and the app works out the average per printer.
       </p>
       <div className="grid-2">
         {ONE_TIME_STEPS.map((s, i) => {
@@ -131,7 +131,7 @@ function OneTimeCard({ ds }: { ds: Dataset }) {
               <span className="secondary num">
                 {n}/{maint.length} printers done
               </span>
-              <PmTimeLog ds={ds} scope="one_time" step={s} divisor={n} divisorLabel="printer" />
+              <PmTimeField ds={ds} scope="one_time" step={s} divisor={n} divisorLabel="printer" />
             </div>
           );
         })}
