@@ -2,7 +2,7 @@
 import { buildPrinters, defaultGroup, parsePrinterId, printerId, shelfOf } from './printers';
 import { computeGroupCycleYield, crossBinHint, partsFromWeight } from './yield';
 import { comparePaired, compareUnits, wilson } from './stats';
-import { analyze, buildVerdict, lostPrintMinutes, repairMinutes } from './analysis';
+import { analyze, buildVerdict, lostPrintMinutes, repairMinutes, yieldShare } from './analysis';
 import { DEFAULT_SETTINGS, type BinWeight, type Cycle, type Dataset, type FileSpec, type PlateRun, type PmTime } from './types';
 
 const T = '2026-10-22T08:00:00.000Z';
@@ -194,6 +194,20 @@ describe('analysis', () => {
     expect(repairMinutes(repair, settings)).toBe(15);
     expect(repairMinutes({ ...repair, action: 'replace_fan' }, settings)).toBe(0);
     expect(repairMinutes({ ...repair, minutes: 40 }, settings)).toBe(40);
+  });
+
+  it('splits expected parts into good, seconds, scrap and missing shares', () => {
+    const y = (good: number, seconds: number, scrap: number, expected: number) =>
+      ({ goodParts: good, secondsParts: seconds, scrapParts: scrap, expectedParts: expected }) as never;
+    const s = yieldShare([y(900, 40, 30, 1000)])!;
+    expect(s.good).toBeCloseTo(0.9);
+    expect(s.missing).toBeCloseTo(0.03);
+    expect(s.good + s.seconds + s.scrap + s.missing).toBeCloseTo(1);
+    // Pooled across cycles, and extra parts never make "missing" negative.
+    const p = yieldShare([y(900, 40, 30, 1000), y(1010, 0, 0, 1000)])!;
+    expect(p.missing).toBeGreaterThanOrEqual(0);
+    expect(p.good).toBeCloseTo(1910 / 2010);
+    expect(yieldShare([y(900, 40, 30, 0)])).toBeNull();
   });
 
   it('labels verdicts as preliminary until final', () => {

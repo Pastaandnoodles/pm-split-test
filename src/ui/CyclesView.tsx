@@ -59,9 +59,12 @@ function StartCycle({ ds }: { ds: Dataset }) {
           onCancel={ds.files.length ? () => setAdding(false) : undefined}
         />
       ) : (
-        <button className="btn" style={{ alignSelf: 'flex-start' }} onClick={() => setAdding(true)}>
-          + New file
-        </button>
+        <div className="row">
+          <button className="btn" onClick={() => setAdding(true)}>
+            + Add a different print file
+          </button>
+          <span className="small secondary">Only needed when you switch to a print file that isn't in the list above.</span>
+        </div>
       )}
       {!ds.settings.testLocked && <div className="small secondary">⚠ Starting the first cycle locks the group assignment.</div>}
       <button className="btn primary" style={{ alignSelf: 'flex-start' }} disabled={!fileId} onClick={start}>

@@ -1,10 +1,11 @@
 import { useMemo, useState } from 'react';
 import { analyze, GROUPS, type AnalysisOptions, type AnalysisResult, type PrinterStats } from '../domain/analysis';
 import { wilson } from '../domain/stats';
+import type { GroupCycleYield } from '../domain/yield';
 import { FAILURE_TYPES, FAILURE_TYPE_LABELS, ONE_TIME_STEP_LABELS, type Dataset, type Group } from '../domain/types';
 import { GROUP_LABEL, GROUP_SHORT } from '../domain/printers';
 import { Check, GroupTag, fmtMoney, fmtNum, fmtPct } from './common';
-import { GroupBarChart, GroupLineChart } from './charts';
+import { GroupBarChart, PassRateBars, YieldStackBars } from './charts';
 
 function loadOpts(): AnalysisOptions {
   try {
@@ -116,61 +117,111 @@ function OutcomeTiles({ r }: { r: AnalysisResult }) {
 
 function TrendCard({ r }: { r: AnalysisResult }) {
   if (r.trend.length === 0) return null;
-  const labels = r.trend.map((t) => `C${t.cycleNumber}`);
-  const series = (k: 'passRate' | 'overallYield') => Object.fromEntries(GROUPS.map((g) => [g, r.trend.map((t) => t[k][g])])) as Record<Group, (number | null)[]>;
   return (
-    <div className="charts">
+    <>
       <div className="card stack">
-        <h3>Plate pass rate by cycle</h3>
-        <span className="small muted">Look for the Maintenance line drifting down: that means the one-time PM is wearing off.</span>
-        <GroupLineChart labels={labels} series={series('passRate')} label="Plate pass rate by cycle for each group" />
+        <h3>Plate pass rate</h3>
+        <span className="small muted">Share of plates that passed. If the Maintenance bars shrink in later cycles, the one-time PM is wearing off.</span>
+        <PassRateBars
+          average={{ control: r.outcomes.control.passRate.estimate, maintenance: r.outcomes.maintenance.passRate.estimate }}
+          cycles={r.trend.map((t) => ({ label: `C${t.cycleNumber}`, values: t.passRate }))}
+        />
       </div>
       <div className="card stack">
-        <h3>Overall yield by cycle</h3>
-        <span className="small muted">Good parts ÷ (all plates started × parts per plate).</span>
-        <GroupLineChart labels={labels} series={series('overallYield')} label="Overall yield by cycle for each group" />
+        <h3>Yield results</h3>
+        <span className="small muted">
+          Where the parts from passed plates ended up: good (solid), seconds, scrap and missing (fainter). Failed plates are in the pass rate above.
+        </span>
+        <YieldStackBars average={r.composition.average} cycles={r.composition.perCycle.map((c) => ({ label: `C${c.cycleNumber}`, shares: c.shares }))} />
       </div>
-    </div>
+    </>
   );
 }
 
+type YieldMetric = { label: string; get: (y: GroupCycleYield) => number | null; fmt: (x: number | null) => string; higherIsBetter: boolean };
+const YIELD_METRICS: YieldMetric[] = [
+  { label: 'Good parts', get: (y) => y.goodParts, fmt: (x) => fmtNum(x), higherIsBetter: true },
+  { label: 'Seconds', get: (y) => y.secondsParts, fmt: (x) => fmtNum(x), higherIsBetter: false },
+  { label: 'Scrap', get: (y) => y.scrapParts, fmt: (x) => fmtNum(x), higherIsBetter: false },
+  { label: 'QC yield', get: (y) => y.qcYield, fmt: (x) => fmtPct(x), higherIsBetter: true },
+  { label: 'Overall yield', get: (y) => y.overallYield, fmt: (x) => fmtPct(x), higherIsBetter: true },
+];
+
+/** Cycles run across; for each measure the Control and Maintenance rows sit together so each cycle compares directly. */
 function YieldTable({ r }: { r: AnalysisResult }) {
   if (!r.cycleYields.length) return null;
+  const cycles = r.cycleYields;
+  const better = (m: YieldMetric, c: (typeof cycles)[number], g: Group) => {
+    const mine = m.get(c[g]);
+    const other = m.get(c[g === 'control' ? 'maintenance' : 'control']);
+    if (mine === null || other === null || mine === other) return false;
+    return m.higherIsBetter ? mine > other : mine < other;
+  };
   return (
     <div className="card stack">
       <h3>Yield per cycle</h3>
+      <span className="small muted">Bold = the better of the two groups for that cycle (more good parts and yield, fewer seconds and scrap).</span>
       <div className="table-wrap">
-        <table>
+        <table className="yield-grid">
           <thead>
             <tr>
-              <th>Cycle</th>
-              {GROUPS.map((g) => (
-                <th key={g} className="r" colSpan={4}>
-                  {GROUP_LABEL[g]}: good / seconds / scrap / overall yield
+              <th>Measure</th>
+              <th>Group</th>
+              {cycles.map((c) => (
+                <th key={c.cycleId} className="r">
+                  C{c.cycleNumber}
                 </th>
               ))}
-              <th className="r">Diff (M − C)</th>
-              <th>Flags</th>
             </tr>
           </thead>
-          <tbody>
-            {r.cycleYields.map((c) => {
-              const d = c.control.overallYield !== null && c.maintenance.overallYield !== null ? c.maintenance.overallYield - c.control.overallYield : null;
-              const flags = [...c.control.flags, ...c.maintenance.flags, ...(c.hint ? [c.hint] : [])];
-              return (
-                <tr key={c.cycleId}>
-                  <td>C{c.cycleNumber}</td>
-                  {GROUPS.flatMap((g) => [
-                    <td key={g + 'g'} className="r">{fmtNum(c[g].goodParts)}</td>,
-                    <td key={g + 's'} className="r">{fmtNum(c[g].secondsParts)}</td>,
-                    <td key={g + 'x'} className="r">{fmtNum(c[g].scrapParts)}</td>,
-                    <td key={g + 'o'} className="r">{fmtPct(c[g].overallYield)}</td>,
-                  ])}
-                  <td className="r">{d === null ? '–' : `${d >= 0 ? '+' : ''}${(d * 100).toFixed(1)} pts`}</td>
-                  <td className="small">{flags.length ? <span className="st-fail">⚠ {flags.length}</span> : ''}</td>
+          {YIELD_METRICS.map((m) => (
+            <tbody key={m.label}>
+              {GROUPS.map((g, i) => (
+                <tr key={g} className={`yrow g-${g}`}>
+                  {i === 0 && (
+                    <th rowSpan={2} scope="rowgroup" className="ylabel">
+                      {m.label}
+                    </th>
+                  )}
+                  <td>
+                    <span className={`gtag g-${g}`}>{GROUP_SHORT[g]}</span>
+                  </td>
+                  {cycles.map((c) => (
+                    <td key={c.cycleId} className="r" style={better(m, c, g) ? { fontWeight: 700 } : undefined}>
+                      {m.fmt(m.get(c[g]))}
+                    </td>
+                  ))}
                 </tr>
-              );
-            })}
+              ))}
+            </tbody>
+          ))}
+          <tbody>
+            <tr>
+              <th colSpan={2} className="ylabel">
+                Overall yield difference (M − C)
+              </th>
+              {cycles.map((c) => {
+                const d = c.control.overallYield !== null && c.maintenance.overallYield !== null ? c.maintenance.overallYield - c.control.overallYield : null;
+                return (
+                  <td key={c.cycleId} className="r">
+                    {d === null ? '–' : `${d >= 0 ? '▲ +' : '▼ '}${(d * 100).toFixed(1)} pts`}
+                  </td>
+                );
+              })}
+            </tr>
+            <tr>
+              <th colSpan={2} className="ylabel">
+                Flags
+              </th>
+              {cycles.map((c) => {
+                const flags = [...c.control.flags, ...c.maintenance.flags, ...(c.hint ? [c.hint] : [])];
+                return (
+                  <td key={c.cycleId} className="r small" title={flags.join('\n')}>
+                    {flags.length ? <span className="st-fail">⚠ {flags.length}</span> : ''}
+                  </td>
+                );
+              })}
+            </tr>
           </tbody>
         </table>
       </div>

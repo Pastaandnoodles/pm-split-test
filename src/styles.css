@@ -180,6 +180,11 @@ th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--gri
 th { font-size: 13px; color: var(--text-2); font-weight: 600; }
 td.r, th.r { text-align: right; font-variant-numeric: tabular-nums; }
 .table-wrap { overflow-x: auto; }
+/* Yield grid: each group's row carries a tint and an edge bar in its color. */
+.yield-grid .yrow td { background: color-mix(in srgb, var(--gc) 9%, transparent); }
+.yield-grid .yrow td:first-of-type { box-shadow: inset 4px 0 0 var(--gc); }
+.yield-grid .ylabel { text-align: left; font-size: 14px; color: var(--text); font-weight: 600; white-space: nowrap; vertical-align: middle; }
+.yield-grid tbody + tbody { border-top: 2px solid var(--grid); }
 
 /* Analysis */
 .verdict { border-left: 8px solid var(--muted); }
@@ -193,6 +198,11 @@ td.r, th.r { text-align: right; font-variant-numeric: tabular-nums; }
 .stat .value { font-size: 28px; font-weight: 600; }
 .stat .sub { font-size: 13px; color: var(--muted); }
 .chart-box { position: relative; height: 280px; }
+.avg-cycles { display: grid; grid-template-columns: minmax(150px, 1fr) 3fr; gap: 16px; }
+.avg-cycles > .chart-box:first-child { border-right: 1px solid var(--grid); padding-right: 16px; }
+@media (max-width: 700px) { .avg-cycles { grid-template-columns: 1fr; } .avg-cycles > .chart-box:first-child { border-right: 0; padding-right: 0; } }
+.seg-key { display: inline-flex; align-items: center; gap: 6px; }
+.seg-key > span { width: 12px; height: 12px; border-radius: 3px; background: var(--text-2); }
 .charts { display: grid; grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); gap: 16px; }
 .heat { display: grid; grid-template-columns: repeat(38, minmax(0, 1fr)); gap: 2px; }
 .heat .cell { aspect-ratio: 1; border-radius: 3px; position: relative; }

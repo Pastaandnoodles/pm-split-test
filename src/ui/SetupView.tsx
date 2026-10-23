@@ -2,7 +2,6 @@ import { useState } from 'react';
 import {
   ONE_TIME_STEPS,
   ONE_TIME_STEP_LABELS,
-  DEFAULT_PASS_FAIL_RULE,
   REACTIVE_ACTIONS,
   REACTIVE_ACTION_LABELS,
   type Dataset,
@@ -25,7 +24,6 @@ export function SetupView({ ds }: { ds: Dataset }) {
       <ValuesCard ds={ds} />
       <RepairTimesCard ds={ds} />
       <PartCostsCard ds={ds} />
-      <RuleCard ds={ds} />
     </div>
   );
 }
@@ -336,30 +334,6 @@ function PartCostsCard({ ds }: { ds: Dataset }) {
           }}
         >
           Save part cost
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function RuleCard({ ds }: { ds: Dataset }) {
-  const [text, setText] = useState(ds.settings.passFailRuleText);
-  return (
-    <div className="card stack">
-      <h2>Pass/fail rule</h2>
-      <p className="secondary small" style={{ margin: 0 }}>
-        Shown on the outcome screen for every plate.
-      </p>
-      <label className="field">
-        <span>Rule text</span>
-        <textarea rows={5} value={text} onChange={(e) => setText(e.target.value)} />
-      </label>
-      <div className="btn-row">
-        <button className="btn primary" disabled={text === ds.settings.passFailRuleText} onClick={() => saveSettings({ passFailRuleText: text })}>
-          Save rule
-        </button>
-        <button className="btn" onClick={() => setText(DEFAULT_PASS_FAIL_RULE)}>
-          Restore default
         </button>
       </div>
     </div>

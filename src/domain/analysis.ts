@@ -3,6 +3,29 @@ import { computeGroupCycleYield, crossBinHint, type GroupCycleYield } from './yi
 import type { Dataset, FailureType, Group, OneTimeStepKey, PlateRun, Printer, ReactiveMaintenance, Settings } from './types';
 import { FAILURE_TYPES, ONE_TIME_STEPS, REACTIVE_ACTION_LABELS } from './types';
 
+/** Where the parts expected from passed plates ended up, as shares that add up to 1. */
+export interface YieldShare {
+  good: number;
+  seconds: number;
+  scrap: number;
+  missing: number;
+}
+
+/**
+ * Pools one or more weighed group-cycles into shares of the expected parts. If the bins hold more than
+ * expected (extra parts), the bins become the base, so missing is never negative.
+ */
+export function yieldShare(rows: GroupCycleYield[]): YieldShare | null {
+  const done = rows.filter((y) => y.goodParts !== null && y.secondsParts !== null && y.scrapParts !== null && y.expectedParts > 0);
+  if (!done.length) return null;
+  const sum = (f: (y: GroupCycleYield) => number) => done.reduce((s, y) => s + f(y), 0);
+  const good = sum((y) => Math.max(0, y.goodParts!));
+  const seconds = sum((y) => Math.max(0, y.secondsParts!));
+  const scrap = sum((y) => Math.max(0, y.scrapParts!));
+  const base = Math.max(sum((y) => y.expectedParts), good + seconds + scrap);
+  return { good: good / base, seconds: seconds / base, scrap: scrap / base, missing: (base - good - seconds - scrap) / base };
+}
+
 /** Repairs aren't timed individually; labor uses the typical time for that kind of repair (legacy records keep their own minutes). */
 export function repairMinutes(r: ReactiveMaintenance, settings: Settings): number {
   return r.minutes ?? settings.repairMinutes[r.action] ?? 0;
@@ -98,6 +121,7 @@ export interface AnalysisResult {
   passTest: TwoGroupTest | null;
   cycleYields: CycleYieldRow[];
   yieldTest: PairedTest | null;
+  composition: { average: Record<Group, YieldShare | null>; perCycle: { cycleNumber: number; shares: Record<Group, YieldShare | null> }[] };
   trend: { cycleNumber: number; passRate: Record<Group, number | null>; overallYield: Record<Group, number | null> }[];
   failureTypes: Record<FailureType, Record<Group, number>>;
   errors: Record<Group, { resumed: number; fatal: number }>;
@@ -283,6 +307,10 @@ export function analyze(ds: Dataset, opts: AnalysisOptions, now = new Date().toI
     passTest,
     cycleYields,
     yieldTest,
+    composition: {
+      average: { control: yieldShare(cycleYields.map((c) => c.control)), maintenance: yieldShare(cycleYields.map((c) => c.maintenance)) },
+      perCycle: cycleYields.map((c) => ({ cycleNumber: c.cycleNumber, shares: { control: yieldShare([c.control]), maintenance: yieldShare([c.maintenance]) } })),
+    },
     trend,
     failureTypes,
     errors: errorsByGroup,

@@ -104,8 +104,7 @@ function PlateCard({ ds, printer, cycle }: { ds: Dataset; printer: Printer; cycl
   const [draft, setDraft] = useState<Draft>(() => existing ?? emptyDraft(printer, cycle));
   const [editing, setEditing] = useState(!existing);
   const [saving, setSaving] = useState(false);
-  const isM = printer.group === 'maintenance';
-  const set = (patch: Partial<Draft>) => setDraft((d) => ({ ...d, ...patch }));
+  const set =(patch: Partial<Draft>) => setDraft((d) => ({ ...d, ...patch }));
   const isFail = draft.outcome === 'fail_finished' || draft.outcome === 'fail_stopped';
   const fatalCodes = ds.errorCodes.filter((e) => e.cycleId === cycle.id && e.printerId === printer.id && e.disposition === 'fatal');
 
@@ -118,12 +117,12 @@ function PlateCard({ ds, printer, cycle }: { ds: Dataset; printer: Printer; cycl
     problems.push('Enter progress % (0–100) from the printer screen');
   const warnings: string[] = [];
   if (isFail && draft.scrapMassG === undefined) warnings.push('Scrap mass not entered');
-  if (!draft.correctPlatePool) warnings.push('Wrong plate pool: a deviation will be logged');
 
   async function save() {
     setSaving(true);
     try {
-      const clean: Draft = { ...draft, checks: impliedChecks(printer.group) };
+      // Plate pools are kept separate by training, so the pool is recorded as correct.
+      const clean: Draft = { ...draft, checks: impliedChecks(printer.group), correctPlatePool: true };
       if (clean.outcome === 'pass') {
         Object.assign(clean, { failureType: undefined, failureNote: undefined, fatalErrorId: undefined, progressPct: undefined, scrapMassG: undefined, stoppedBy: undefined, cancelReason: undefined });
       } else if (clean.outcome === 'fail_finished') {
@@ -131,12 +130,6 @@ function PlateCard({ ds, printer, cycle }: { ds: Dataset; printer: Printer; cycl
       } else if (clean.stoppedBy !== 'canceled') clean.cancelReason = undefined;
       if (existing) await updateRecord('plateRuns', existing.id, clean);
       else await createRecord('plateRuns', clean);
-
-      const prev = existing;
-      const newly = (now: boolean, before: boolean | undefined) => now && (prev === undefined || !before);
-      if (newly(!clean.correctPlatePool, prev ? !prev.correctPlatePool : undefined)) {
-        await createRecord('deviations', { type: 'wrong_plate_pool', printerId: printer.id, cycleId: cycle.id, description: 'Plate from the wrong plate pool (auto-logged)', excludeFromAnalysis: false });
-      }
       setEditing(false);
     } finally {
       setSaving(false);
@@ -162,14 +155,7 @@ function PlateCard({ ds, printer, cycle }: { ds: Dataset; printer: Printer; cycl
   return (
     <div className="card stack">
       <h3>Plate · Cycle {cycle.number}</h3>
-      <Check
-        label={isM ? 'Plate came from the cleaned (taped) pool' : 'Plate came from the normal farm pool'}
-        checked={draft.correctPlatePool}
-        onChange={(v) => set({ correctPlatePool: v })}
-      />
-
       <span className="small secondary">Outcome</span>
-      <div className="rule">{ds.settings.passFailRuleText}</div>
       <Segmented<Outcome>
         value={draft.outcome}
         onChange={(v) => set({ outcome: v })}
@@ -261,9 +247,7 @@ function PlateSummary({ run }: { run: PlateRun }) {
       <strong className={run.outcome === 'pass' ? 'st-pass' : 'st-fail'}>{label}</strong>
       {run.failureType && <span>{FAILURE_TYPE_LABELS[run.failureType]}</span>}
       <span className="secondary small">
-        {run.progressPct !== undefined && `Progress ${run.progressPct}% · `}
-        {run.scrapMassG !== undefined && `Scrap ${run.scrapMassG} g · `}
-        {run.correctPlatePool ? 'Correct plate pool' : 'Wrong plate pool'}
+        {[run.progressPct !== undefined && `Progress ${run.progressPct}%`, run.scrapMassG !== undefined && `Scrap ${run.scrapMassG} g`].filter(Boolean).join(' · ')}
       </span>
       {run.failureNote && <span className="secondary">{run.failureNote}</span>}
       {run.photoId && <PhotoView id={run.photoId} />}

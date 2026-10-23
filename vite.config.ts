@@ -6,6 +6,10 @@ import { VitePWA } from 'vite-plugin-pwa';
 // Relative base so the build works on GitHub Pages under any repo name.
 export default defineConfig({
   base: './',
+  define: {
+    // Shown on the Data tab so the operator can tell which version the iPad is running.
+    __APP_VERSION__: JSON.stringify(new Date().toISOString()),
+  },
   plugins: [
     react(),
     VitePWA({

@@ -50,7 +50,7 @@ All test data is captured through this app. The paper error-code sheets on each 
 
 ### Plate pools
 - Maintenance printers use **only** tape-marked cleaned plates. Control printers use **only** normal farm plates.
-- Each plate run records `correct_plate_pool: yes/no`. A "no" auto-creates a deviation.
+- Pools are kept separate through training, so the app doesn't ask about them. `correct_plate_pool` is always recorded as true. A mix-up is logged by hand as a `wrong_plate_pool` deviation.
 
 ### Roles
 - **The operator** is the only app user. They remove all plates, log failures, transcribe error sheets, weigh bins, and clean and tape-mark plates.
@@ -135,12 +135,12 @@ Control has no PM minutes by definition. Its labor shows up through reactive mai
 - Calibration machine minutes per print.
 - Dollars: labor rate ($/hr), value per good wigglitz, filament cost ($/kg), machine-hour value, and a cost per replacement part type.
 - Missing-parts tolerance (default 2%).
-- The pass/fail rule text is shown on the outcome screen. It defaults to the rule above.
+- The pass/fail rule is enforced by training and isn't shown in the app (the outcome buttons carry the three outcomes).
 
 ## UI
 
 - **Main screen: shelf map grid.** 38 columns × 2 rows that mirror the real layout, with shelf dividers every 2 columns and groups color-coded (also shown with a pattern or letter, so color isn't the only cue). Each tile shows the current cycle's status: pending / pass / fail / cancel, plus badges for error codes and reactive maintenance.
-- Tapping a printer opens a sheet with, in order: plate (pool check, outcome, failure details, optional photo), error codes, reactive maintenance, deviations, history, and **printer down at the bottom** (it's rare). While a printer is down, its "Mark back up" banner moves to the top.
+- Tapping a printer opens a sheet with, in order: plate (outcome, failure details, optional photo), error codes, reactive maintenance, deviations, history, and **printer down at the bottom** (it's rare). While a printer is down, its "Mark back up" banner moves to the top.
 - Other tabs: **Setup** (printers, groups, files, one-time PM checklist), **Cycles** (start/close a cycle, bin weights), **Analysis**, **Data** (export/backup/restore, audit log).
 - iPad-first: large touch targets (≥ 48px), usable with gloves, landscape and portrait, minimal typing. Show a progress bar toward 532 per group at all times.
 
@@ -152,7 +152,7 @@ Audience: managers. Lead with a **plain-English verdict** ("Maintenance is clear
 - Yield: Maintenance vs Control **paired by cycle** (same file, same cycle).
 - Failure types by group, error codes (resumed vs fatal) by group, top codes.
 - Reactive maintenance events, parts, and minutes by group.
-- **Trend by cycle**, to show whether the one-time PM effect fades.
+- **Trend by cycle**, to show whether the one-time PM effect fades. Charts: an "All cycles average" panel on the left and one bar pair per cycle on the right, on the same 0–100% scale. **Plate pass rate**: grouped bars. **Yield results**: stacked bars of good (solid group color), seconds, scrap and missing (increasingly translucent) as shares of the parts expected from passed plates (`yieldShare`). The **Yield per cycle** table has cycles as columns, with Control and Maintenance rows paired per measure, tinted in the group color, and the better value in bold.
 - Per-printer table and shelf heatmap, with outlier printers flagged. Top vs bottom row comparison.
 - **ROI:** the net value from the Win definition formula, with a breakdown of each term. If dollar inputs are missing, show the labor minutes and part counts instead.
 - Failure progress % and scrap mass by group.

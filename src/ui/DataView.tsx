@@ -56,7 +56,7 @@ export function DataView({ ds }: { ds: Dataset }) {
           The data lives only on this iPad. Save a full backup (including photos) to Files or AirDrop it at least once a day and after every cycle.
         </p>
         <span className="small secondary">
-          Last backup: {ds.settings.lastBackupAt ? fmtTime(ds.settings.lastBackupAt) : 'never'}
+          App version {fmtTime(__APP_VERSION__)} · Last backup: {ds.settings.lastBackupAt ? fmtTime(ds.settings.lastBackupAt) : 'never'}
           {' · '}Storage {persisted ? 'protected from automatic clearing' : persisted === false ? 'NOT protected (add the app to the Home Screen)' : 'unknown'}
           {usage ? ` · ${usage}` : ''}
         </span>
