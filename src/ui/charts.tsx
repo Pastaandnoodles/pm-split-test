@@ -47,6 +47,9 @@ function alpha(hex: string, a: number): string {
 
 const pct = (v: unknown) => `${(Number(v) * 100).toFixed(1)}%`;
 
+/** Share of each cycle's slot taken by its Control + Maintenance pair: narrow when there are few cycles, so bars never balloon. */
+const pairShare = (cycles: number) => Math.min(0.6, 0.15 * Math.max(cycles, 1));
+
 function percentOptions(t: Theme, stacked: boolean): ChartOptions<'bar'> {
   return {
     responsive: true,
@@ -76,15 +79,14 @@ function AvgAndCycles({ label, left, right }: { label: string; left: ReactNode; 
 /** Pass rate (share of plates that passed): all-cycles average beside each cycle. */
 export function PassRateBars({ average, cycles }: { average: Record<Group, number | null>; cycles: { label: string; values: Record<Group, number | null> }[] }) {
   const t = useTheme();
-  const ds = (g: Group, data: (number | null)[], thick: number): ChartDataset<'bar', (number | null)[]> => ({
+  const ds = (g: Group, data: (number | null)[], share: number): ChartDataset<'bar', (number | null)[]> => ({
     label: GROUP_LABEL[g],
     data,
     backgroundColor: groupColor(t, g),
-    maxBarThickness: thick,
     borderRadius: 4,
     borderSkipped: 'start',
-    categoryPercentage: 0.7,
-    barPercentage: 0.9,
+    categoryPercentage: share,
+    barPercentage: 0.96, // a pair of bars nearly touching, with a hairline gap
   });
   return (
     <>
@@ -94,8 +96,8 @@ export function PassRateBars({ average, cycles }: { average: Record<Group, numbe
       </div>
       <AvgAndCycles
         label="Plate pass rate for each group: all-cycles average and each cycle"
-        left={<Bar options={percentOptions(t, false)} data={{ labels: ['All cycles average'], datasets: GROUPS.map((g) => ds(g, [average[g]], 56)) }} />}
-        right={<Bar options={percentOptions(t, false)} data={{ labels: cycles.map((c) => c.label), datasets: GROUPS.map((g) => ds(g, cycles.map((c) => c.values[g]), 24)) }} />}
+        left={<Bar options={percentOptions(t, false)} data={{ labels: ['All cycles average'], datasets: GROUPS.map((g) => ds(g, [average[g]], 0.5)) }} />}
+        right={<Bar options={percentOptions(t, false)} data={{ labels: cycles.map((c) => c.label), datasets: GROUPS.map((g) => ds(g, cycles.map((c) => c.values[g]), pairShare(cycles.length))) }} />}
       />
     </>
   );
@@ -111,7 +113,7 @@ const SEGMENTS: { key: keyof YieldShare; label: string; opacity: number }[] = [
 /** Stacked bars: good parts solid, seconds / scrap / missing increasingly translucent, in each group's color. */
 export function YieldStackBars({ average, cycles }: { average: Record<Group, YieldShare | null>; cycles: { label: string; shares: Record<Group, YieldShare | null> }[] }) {
   const t = useTheme();
-  const datasets = (rows: Record<Group, YieldShare | null>[], thick: number): ChartDataset<'bar', (number | null)[]>[] =>
+  const datasets = (rows: Record<Group, YieldShare | null>[], share: number): ChartDataset<'bar', (number | null)[]>[] =>
     GROUPS.flatMap((g) =>
       SEGMENTS.map((s) => ({
         label: `${GROUP_LABEL[g]} · ${s.label}`,
@@ -121,9 +123,8 @@ export function YieldStackBars({ average, cycles }: { average: Record<Group, Yie
         borderColor: t.surface,
         borderWidth: { top: 2, bottom: 0, left: 0, right: 0 },
         borderSkipped: 'start' as const,
-        maxBarThickness: thick,
-        categoryPercentage: 0.7,
-        barPercentage: 0.9,
+        categoryPercentage: share,
+        barPercentage: 0.96,
       })),
     );
   return (
@@ -140,8 +141,8 @@ export function YieldStackBars({ average, cycles }: { average: Record<Group, Yie
       </div>
       <AvgAndCycles
         label="Yield breakdown for each group: good, seconds, scrap and missing as a share of expected parts, all-cycles average and each cycle"
-        left={<Bar options={percentOptions(t, true)} data={{ labels: ['All cycles average'], datasets: datasets([average], 56) }} />}
-        right={<Bar options={percentOptions(t, true)} data={{ labels: cycles.map((c) => c.label), datasets: datasets(cycles.map((c) => c.shares), 24) }} />}
+        left={<Bar options={percentOptions(t, true)} data={{ labels: ['All cycles average'], datasets: datasets([average], 0.5) }} />}
+        right={<Bar options={percentOptions(t, true)} data={{ labels: cycles.map((c) => c.label), datasets: datasets(cycles.map((c) => c.shares), pairShare(cycles.length)) }} />}
       />
     </>
   );

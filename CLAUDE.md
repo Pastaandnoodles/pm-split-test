@@ -141,7 +141,7 @@ Control has no PM minutes by definition. Its labor shows up through reactive mai
 
 - **Main screen: shelf map grid.** 38 columns × 2 rows that mirror the real layout, with shelf dividers every 2 columns and groups color-coded (also shown with a pattern or letter, so color isn't the only cue). Each tile shows the current cycle's status: pending / pass / fail / cancel, plus badges for error codes and reactive maintenance.
 - Tapping a printer opens a sheet with, in order: plate (outcome, failure details, optional photo), error codes, reactive maintenance, deviations, history, and **printer down at the bottom** (it's rare). While a printer is down, its "Mark back up" banner moves to the top.
-- Other tabs: **Setup** (printers, groups, files, one-time PM checklist), **Cycles** (start/close a cycle, bin weights), **Analysis**, **Data** (export/backup/restore, audit log).
+- Other tabs: **Setup** (printers, groups, files, one-time PM checklist), **Cycles** (start/close a cycle, bin weights; closed cycles as tabs, green ✓ when complete and yellow ⚠ when data is missing, per `missingCycleData`), **Analysis**, **Data** (export/backup/restore, audit log).
 - iPad-first: large touch targets (≥ 48px), usable with gloves, landscape and portrait, minimal typing. Show a progress bar toward 532 per group at all times.
 
 ## Analysis tab
@@ -152,10 +152,10 @@ Audience: managers. Lead with a **plain-English verdict** ("Maintenance is clear
 - Yield: Maintenance vs Control **paired by cycle** (same file, same cycle).
 - Failure types by group, error codes (resumed vs fatal) by group, top codes.
 - Reactive maintenance events, parts, and minutes by group.
-- **Trend by cycle**, to show whether the one-time PM effect fades. Charts: an "All cycles average" panel on the left and one bar pair per cycle on the right, on the same 0–100% scale. **Plate pass rate**: grouped bars. **Yield results**: stacked bars of good (solid group color), seconds, scrap and missing (increasingly translucent) as shares of the parts expected from passed plates (`yieldShare`). The **Yield per cycle** table has cycles as columns, with Control and Maintenance rows paired per measure, tinted in the group color, and the better value in bold.
+- **Trend by cycle**, to show whether the one-time PM effect fades. Charts (each cycle's Control and Maintenance bars nearly touching): an "All cycles average" panel on the left and one bar pair per cycle on the right, on the same 0–100% scale. **Plate pass rate**: grouped bars. **Yield results**: stacked bars of good (solid group color), seconds, scrap and missing (increasingly translucent) as shares of the parts expected from passed plates (`yieldShare`). The **Yield per cycle** table has one row per measure and, for each cycle, a Control and a Maintenance sub-column side by side (tinted in the group color, better value bold).
 - Per-printer table and shelf heatmap, with outlier printers flagged. Top vs bottom row comparison.
 - **ROI:** the net value from the Win definition formula, with a breakdown of each term. If dollar inputs are missing, show the labor minutes and part counts instead.
-- Failure progress % and scrap mass by group.
+- Failure progress % and scrap mass by group, plus **wigglitz lost to scrap** (`scrapToParts`: each cycle's scrap grams ÷ that cycle's file unit weight, rounded, summed).
 - A toggle to include or exclude deviation-flagged and non-printer-cancel plates.
 - Stated scope and limitations: this test asks whether the PM bundle pays off at all. Which individual steps drive the payoff is left to future tests. There's no baseline period, because all printers have equal run time and wear. The observer isn't blinded. QC yield is measured per group per cycle only, never per printer. Per-printer analysis uses plate outcomes, failures, error codes, and reactive maintenance.
 

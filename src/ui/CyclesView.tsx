@@ -4,20 +4,54 @@ import { PmTimeLog } from './PmTimeLog';
 import { computeGroupCycleYield, crossBinHint, findBin, type GroupCycleYield } from '../domain/yield';
 import { createRecord, saveSettings, updateRecord } from '../db/db';
 import { openCycle, openDowntime } from '../db/useDataset';
+import { missingCycleData } from '../domain/completeness';
 import { CommitNumberField, ConfirmButton, GroupTag, NumberField, TextField, fmtNum, fmtPct, fmtTime } from './common';
 
 const GROUPS: Group[] = ['control', 'maintenance'];
 
 export function CyclesView({ ds }: { ds: Dataset }) {
   const open = openCycle(ds);
-  const past = ds.cycles.filter((c) => c.endedAt).sort((a, b) => b.number - a.number);
+  const past = ds.cycles.filter((c) => c.endedAt).sort((a, b) => a.number - b.number);
+  const [selectedId, setSelectedId] = useState<string>();
+  const selected = past.find((c) => c.id === selectedId) ?? past.at(-1);
   return (
     <div className="section">
       {open ? <CycleCard ds={ds} cycle={open} isOpen /> : <StartCycle ds={ds} />}
-      {past.length > 0 && <h2>Closed cycles</h2>}
-      {past.map((c) => (
-        <CycleCard key={c.id} ds={ds} cycle={c} />
-      ))}
+      {past.length > 0 && (
+        <>
+          <h2>Closed cycles</h2>
+          <div className="cycle-tabs" role="tablist">
+            {past.map((c) => {
+              const complete = missingCycleData(ds, c).length === 0;
+              return (
+                <button
+                  key={c.id}
+                  role="tab"
+                  aria-selected={c.id === selected?.id}
+                  className={`ctab ${complete ? 'complete' : 'incomplete'}`}
+                  title={complete ? 'All data entered' : 'Missing data'}
+                  onClick={() => setSelectedId(c.id)}
+                >
+                  C{c.number} {complete ? '✓' : '⚠'}
+                </button>
+              );
+            })}
+          </div>
+          <span className="small secondary">✓ green = all data entered · ⚠ yellow = something is missing. Tap a cycle to open it.</span>
+          {selected && <CycleCard key={selected.id} ds={ds} cycle={selected} />}
+        </>
+      )}
+    </div>
+  );
+}
+
+function MissingList({ ds, cycle, isOpen }: { ds: Dataset; cycle: Cycle; isOpen?: boolean }) {
+  const missing = missingCycleData(ds, cycle);
+  if (!missing.length) return <div className="small st-pass">✓ All data entered for this cycle.</div>;
+  return (
+    <div className={`banner${isOpen ? ' info' : ''}`} style={{ marginBottom: 0 }}>
+      <strong>{isOpen ? 'Still to do:' : '⚠ Missing:'}</strong>
+      <span className="secondary">{missing.join(' · ')}</span>
     </div>
   );
 }
@@ -187,6 +221,7 @@ function CycleCard({ ds, cycle, isOpen }: { ds: Dataset; cycle: Cycle; isOpen?: 
       <span className="secondary num">
         {runs.length}/76 plates logged{isOpen && down ? ` · ${down} printers down` : ''}
       </span>
+      <MissingList ds={ds} cycle={cycle} isOpen={isOpen} />
 
       <h3>Bin weights</h3>
       <p className="secondary small" style={{ margin: 0 }}>

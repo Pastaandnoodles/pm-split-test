@@ -2,7 +2,8 @@
 import { buildPrinters, defaultGroup, parsePrinterId, printerId, shelfOf } from './printers';
 import { computeGroupCycleYield, crossBinHint, partsFromWeight } from './yield';
 import { comparePaired, compareUnits, wilson } from './stats';
-import { analyze, buildVerdict, lostPrintMinutes, repairMinutes, yieldShare } from './analysis';
+import { analyze, buildVerdict, lostPrintMinutes, repairMinutes, scrapToParts, yieldShare } from './analysis';
+import { missingCycleData } from './completeness';
 import { DEFAULT_SETTINGS, type BinWeight, type Cycle, type Dataset, type FileSpec, type PlateRun, type PmTime } from './types';
 
 const T = '2026-10-22T08:00:00.000Z';
@@ -208,6 +209,37 @@ describe('analysis', () => {
     expect(p.missing).toBeGreaterThanOrEqual(0);
     expect(p.good).toBeCloseTo(1910 / 2010);
     expect(yieldShare([y(900, 40, 30, 0)])).toBeNull();
+  });
+
+  it('converts failed-plate scrap to lost wigglitz per cycle, using each cycle file', () => {
+    const files = new Map<string, FileSpec>([
+      ['goblin', { ...base('goblin'), name: 'goblin', partsPerPlate: 100, unitWeightG: 3.2 }],
+      ['dragon', { ...base('dragon'), name: 'dragon', partsPerPlate: 50, unitWeightG: 5 }],
+    ]);
+    const cycles: Cycle[] = [
+      { ...base('c1'), number: 1, fileId: 'goblin', startedAt: T },
+      { ...base('c2'), number: 2, fileId: 'dragon', startedAt: T },
+    ];
+    const fails = [
+      run('a', 'H-01a', 'c1', 'fail_finished', { scrapMassG: 200 }),
+      run('b', 'H-03a', 'c1', 'fail_stopped', { scrapMassG: 120 }), // cycle 1: 320 g ÷ 3.2 = 100
+      run('c', 'H-05a', 'c2', 'fail_finished', { scrapMassG: 250 }), // cycle 2: 250 g ÷ 5 = 50
+    ];
+    expect(scrapToParts(fails, cycles, files)).toBe(150);
+  });
+
+  it('lists what a cycle is missing, excusing printers that were down', () => {
+    const ds = dataset();
+    const c1 = ds.cycles[0];
+    // The analysis fixture has every plate and bin but no print time on its file.
+    expect(missingCycleData(ds, c1, T)).toEqual(['Print time for file "w"']);
+    ds.files[0] = { ...ds.files[0], printTimeMin: 300 };
+    expect(missingCycleData(ds, c1, T)).toEqual([]);
+    ds.plateRuns = ds.plateRuns.filter((r) => !(r.cycleId === c1.id && (r.printerId === 'H-01a' || r.printerId === 'H-02a')));
+    ds.downtime = [{ ...base('d'), printerId: 'H-02a', downAt: '2026-10-22T07:00:00.000Z', upAt: '2026-10-22T09:00:00.000Z' }];
+    expect(missingCycleData(ds, c1, T)).toEqual(['1 plate not logged']);
+    ds.bins = ds.bins.filter((b) => !(b.cycleId === c1.id && b.kind === 'scrap' && b.group === 'control'));
+    expect(missingCycleData(ds, c1, T)).toContain('Control scrap bin weight');
   });
 
   it('labels verdicts as preliminary until final', () => {

@@ -1,6 +1,6 @@
 import { compareUnits, comparePaired, bootstrapMean, wilson, type Interval, type PairedTest, type TwoGroupTest } from './stats';
 import { computeGroupCycleYield, crossBinHint, type GroupCycleYield } from './yield';
-import type { Dataset, FailureType, Group, OneTimeStepKey, PlateRun, Printer, ReactiveMaintenance, Settings } from './types';
+import type { Cycle, Dataset, FailureType, FileSpec, Group, OneTimeStepKey, PlateRun, Printer, ReactiveMaintenance, Settings } from './types';
 import { FAILURE_TYPES, ONE_TIME_STEPS, REACTIVE_ACTION_LABELS } from './types';
 
 /** Where the parts expected from passed plates ended up, as shares that add up to 1. */
@@ -24,6 +24,19 @@ export function yieldShare(rows: GroupCycleYield[]): YieldShare | null {
   const scrap = sum((y) => Math.max(0, y.scrapParts!));
   const base = Math.max(sum((y) => y.expectedParts), good + seconds + scrap);
   return { good: good / base, seconds: seconds / base, scrap: scrap / base, missing: (base - good - seconds - scrap) / base };
+}
+
+/**
+ * Wigglitz lost to failed-plate scrap: each cycle's scrap grams ÷ that cycle's file unit weight (rounded),
+ * summed over cycles. Cycles whose file has no unit weight are skipped.
+ */
+export function scrapToParts(failedRuns: PlateRun[], cycles: Cycle[], fileById: Map<string, FileSpec>): number {
+  return cycles.reduce((total, cycle) => {
+    const unit = fileById.get(cycle.fileId)?.unitWeightG ?? 0;
+    if (unit <= 0) return total;
+    const grams = failedRuns.filter((r) => r.cycleId === cycle.id).reduce((s, r) => s + (r.scrapMassG ?? 0), 0);
+    return total + Math.round(grams / unit);
+  }, 0);
 }
 
 /** Repairs aren't timed individually; labor uses the typical time for that kind of repair (legacy records keep their own minutes). */
@@ -128,7 +141,7 @@ export interface AnalysisResult {
   topCodes: { code: string; control: number; maintenance: number }[];
   reactive: Record<Group, { count: number; minutes: number; parts: Record<string, number> }>;
   rows: Record<Group, { top: Interval; bottom: Interval }>;
-  scrap: Record<Group, { stoppedCount: number; meanProgressPct: number | null; totalScrapG: number; lostPrintHours: number }>;
+  scrap: Record<Group, { stoppedCount: number; meanProgressPct: number | null; totalScrapG: number; lostParts: number; lostPrintHours: number }>;
   labor: Labor;
   economics: Economics;
   verdict: Verdict;
@@ -291,6 +304,7 @@ export function analyze(ds: Dataset, opts: AnalysisOptions, now = new Date().toI
       stoppedCount: stopped.length,
       meanProgressPct: stopped.length ? stopped.reduce((s, r) => s + r.progressPct!, 0) / stopped.length : null,
       totalScrapG: gr.reduce((s, r) => s + (r.scrapMassG ?? 0), 0),
+      lostParts: scrapToParts(gr, cycles, fileById),
       lostPrintHours: gr.reduce((s, r) => s + lostPrintMinutes(r, fileById.get(cycles.find((c) => c.id === r.cycleId)?.fileId ?? '')?.printTimeMin ?? 0), 0) / 60,
     };
   }

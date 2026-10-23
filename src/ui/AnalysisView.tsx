@@ -105,6 +105,8 @@ function OutcomeTiles({ r }: { r: AnalysisResult }) {
             <GroupTag group={g} /> scrap
           </div>
           <div className="value">{fmtNum(r.scrap[g].totalScrapG)} g</div>
+          <div className="value" style={{ fontSize: 20 }}>≈ {fmtNum(r.scrap[g].lostParts)} wigglitz lost</div>
+          <div className="sub">Each cycle's scrap grams ÷ that file's weight per wigglitz, added up</div>
           <div className="sub">
             {r.scrap[g].stoppedCount} stopped plates · avg progress {r.scrap[g].meanProgressPct === null ? '–' : `${r.scrap[g].meanProgressPct.toFixed(0)}%`}
           </div>
@@ -147,7 +149,7 @@ const YIELD_METRICS: YieldMetric[] = [
   { label: 'Overall yield', get: (y) => y.overallYield, fmt: (x) => fmtPct(x), higherIsBetter: true },
 ];
 
-/** Cycles run across; for each measure the Control and Maintenance rows sit together so each cycle compares directly. */
+/** One row per measure; each cycle has Control and Maintenance sub-columns side by side so a cycle reads straight across. */
 function YieldTable({ r }: { r: AnalysisResult }) {
   if (!r.cycleYields.length) return null;
   const cycles = r.cycleYields;
@@ -165,58 +167,53 @@ function YieldTable({ r }: { r: AnalysisResult }) {
         <table className="yield-grid">
           <thead>
             <tr>
-              <th>Measure</th>
-              <th>Group</th>
+              <th rowSpan={2}>Measure</th>
               {cycles.map((c) => (
-                <th key={c.cycleId} className="r">
+                <th key={c.cycleId} colSpan={2} className="ycycle">
                   C{c.cycleNumber}
                 </th>
               ))}
             </tr>
-          </thead>
-          {YIELD_METRICS.map((m) => (
-            <tbody key={m.label}>
-              {GROUPS.map((g, i) => (
-                <tr key={g} className={`yrow g-${g}`}>
-                  {i === 0 && (
-                    <th rowSpan={2} scope="rowgroup" className="ylabel">
-                      {m.label}
-                    </th>
-                  )}
-                  <td>
+            <tr>
+              {cycles.flatMap((c) =>
+                GROUPS.map((g) => (
+                  <th key={c.cycleId + g} className={`r ycell g-${g}`}>
                     <span className={`gtag g-${g}`}>{GROUP_SHORT[g]}</span>
-                  </td>
-                  {cycles.map((c) => (
-                    <td key={c.cycleId} className="r" style={better(m, c, g) ? { fontWeight: 700 } : undefined}>
+                  </th>
+                )),
+              )}
+            </tr>
+          </thead>
+          <tbody>
+            {YIELD_METRICS.map((m) => (
+              <tr key={m.label}>
+                <th className="ylabel">{m.label}</th>
+                {cycles.flatMap((c) =>
+                  GROUPS.map((g) => (
+                    <td key={c.cycleId + g} className={`r ycell g-${g}`} style={better(m, c, g) ? { fontWeight: 700 } : undefined}>
                       {m.fmt(m.get(c[g]))}
                     </td>
-                  ))}
-                </tr>
-              ))}
-            </tbody>
-          ))}
-          <tbody>
-            <tr>
-              <th colSpan={2} className="ylabel">
-                Overall yield difference (M − C)
-              </th>
+                  )),
+                )}
+              </tr>
+            ))}
+            <tr className="ysummary">
+              <th className="ylabel">Overall yield difference (M − C)</th>
               {cycles.map((c) => {
                 const d = c.control.overallYield !== null && c.maintenance.overallYield !== null ? c.maintenance.overallYield - c.control.overallYield : null;
                 return (
-                  <td key={c.cycleId} className="r">
+                  <td key={c.cycleId} colSpan={2} className="ycycle">
                     {d === null ? '–' : `${d >= 0 ? '▲ +' : '▼ '}${(d * 100).toFixed(1)} pts`}
                   </td>
                 );
               })}
             </tr>
             <tr>
-              <th colSpan={2} className="ylabel">
-                Flags
-              </th>
+              <th className="ylabel">Flags</th>
               {cycles.map((c) => {
                 const flags = [...c.control.flags, ...c.maintenance.flags, ...(c.hint ? [c.hint] : [])];
                 return (
-                  <td key={c.cycleId} className="r small" title={flags.join('\n')}>
+                  <td key={c.cycleId} colSpan={2} className="ycycle small" title={flags.join('\n')}>
                     {flags.length ? <span className="st-fail">⚠ {flags.length}</span> : ''}
                   </td>
                 );
